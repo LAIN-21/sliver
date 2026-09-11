@@ -16,7 +16,9 @@ Coding agents must also follow [AGENTS.md](AGENTS.md).
 
 ## Issues
 
-Open work with a [task](.github/ISSUE_TEMPLATE/task.yml) or [bug](.github/ISSUE_TEMPLATE/bug.yml) form.
+Humans should open work with a [task](.github/ISSUE_TEMPLATE/task.yml) or [bug](.github/ISSUE_TEMPLATE/bug.yml) GitHub form.
+
+Agents may create the equivalent Markdown Task issue programmatically. Programmatic creation must mirror the canonical Task schema in [`.github/ISSUE_TEMPLATE/task.yml`](.github/ISSUE_TEMPLATE/task.yml). GitHub form-only mechanics such as field IDs, placeholders, heading rendering, and UI validation do not need to appear in the final issue body.
 
 A task issue is the implementation contract. Fill:
 
