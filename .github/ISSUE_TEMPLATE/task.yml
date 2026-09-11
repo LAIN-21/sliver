@@ -6,6 +6,8 @@ body:
       value: |
         This issue is the implementation contract for the task.
 
+        This file is also the canonical schema for programmatically created Task issues.
+
         Coding agents must follow `AGENTS.md` and this issue.
         Link to canonical docs instead of copying architecture rules here.
   - type: textarea

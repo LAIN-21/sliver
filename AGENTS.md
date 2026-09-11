@@ -32,6 +32,15 @@ An issue that says "modify payments however needed" still cannot override a glob
 - Do not silently expand Scope.
 - If correctness requires work outside allowed Scope, report the reason explicitly.
 
+## Task issue creation
+
+- Before creating a Task issue programmatically, read [`.github/ISSUE_TEMPLATE/task.yml`](.github/ISSUE_TEMPLATE/task.yml).
+- Reproduce the same Task field labels.
+- Preserve required vs optional semantics.
+- Do not silently omit required fields.
+- Verify the created issue contains all required Task fields.
+- Do not invent labels, milestones, assignees, or other metadata unless explicitly requested.
+
 ## Required reading
 
 - Read [docs/PRODUCT.md](docs/PRODUCT.md) when product behavior is involved.
