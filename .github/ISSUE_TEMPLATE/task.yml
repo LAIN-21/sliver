@@ -1,0 +1,90 @@
+name: Task
+description: Scoped implementation contract for a contributor or coding agent
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is the implementation contract for the task.
+
+        Coding agents must follow `AGENTS.md` and this issue.
+        Link to canonical docs instead of copying architecture rules here.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What this task must accomplish.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Background needed to implement the task. Keep this short; link to canonical docs where possible.
+    validations:
+      required: false
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in Scope for this task.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of Scope
+      description: What must not be done as part of this task.
+    validations:
+      required: true
+  - type: textarea
+    id: allowed-paths
+    attributes:
+      label: Allowed Paths
+      description: Paths the implementation is expected to modify. This is the expected implementation surface, not permission to ignore repository invariants. Changes elsewhere must be disclosed in the PR under Changes outside expected scope.
+      placeholder: |
+        docs/PRODUCT.md
+        AGENTS.md
+    validations:
+      required: true
+  - type: textarea
+    id: protected-areas
+    attributes:
+      label: Protected Areas
+      description: Paths or architectural areas that must not be modified as part of this task. These remain hard boundaries unless the task itself is revised.
+      placeholder: |
+        LICENSE
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Observable conditions that must be true when the task is done.
+    validations:
+      required: true
+  - type: textarea
+    id: required-verification
+    attributes:
+      label: Required Verification
+      description: Checks, tests, or reviews that must be run before the PR is opened.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Issues, ADRs, or other work this task depends on.
+    validations:
+      required: false
+  - type: textarea
+    id: architecture-references
+    attributes:
+      label: Architecture References
+      description: Optional links to canonical docs. Prefer links over copied context. Typical references include docs/PRODUCT.md, docs/ARCHITECTURE.md, an ADR, and docs/agents/ files.
+      placeholder: |
+        docs/ARCHITECTURE.md
+        docs/PRODUCT.md
+        docs/adr/README.md
+        docs/agents/infrastructure.md
+    validations:
+      required: false

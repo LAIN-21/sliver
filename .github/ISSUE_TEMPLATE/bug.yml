@@ -1,0 +1,61 @@
+name: Bug report
+description: Report incorrect behavior
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for defects. For new scoped work, use the Task form.
+  - type: textarea
+    id: observed-behavior
+    attributes:
+      label: Observed behavior
+      description: What actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What should have happened.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps to reproduce the problem.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Relevant local, CI, or runtime details. If local development tooling does not exist yet, say so.
+    validations:
+      required: true
+  - type: textarea
+    id: suspected-area
+    attributes:
+      label: Suspected area
+      description: Conceptual area if known, such as seller, catalog, buyer-facing interface, transactions, or infrastructure.
+    validations:
+      required: false
+  - type: textarea
+    id: logs-errors
+    attributes:
+      label: Relevant logs/errors
+      description: Paste relevant logs or error messages. This field is formatted as text.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: regression
+    attributes:
+      label: Regression information
+      description: Did this work before? If yes, when did it break?
+    validations:
+      required: false
