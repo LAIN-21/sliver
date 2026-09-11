@@ -2,7 +2,12 @@
 
 Use an ADR to record a significant technical decision.
 
-This directory currently contains the process only. Do not add speculative ADRs.
+Accepted records:
+
+- [0001-postgresql-primary-relational-database.md](0001-postgresql-primary-relational-database.md)
+- [0002-s3-compatible-object-storage.md](0002-s3-compatible-object-storage.md)
+
+Do not add speculative ADRs.
 
 ## When an ADR is required
 
@@ -44,4 +49,4 @@ Proposed, accepted, superseded, or deprecated.
 
 ## Naming
 
-Use numbered files such as `0001-short-title.md` when the first ADR is written.
+Use numbered files such as `0001-short-title.md`.

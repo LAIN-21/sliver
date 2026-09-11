@@ -2,7 +2,7 @@
 
 Sliver is infrastructure and a marketplace that lets data owners turn datasets into granular, machine-purchasable Resources for external AI agents.
 
-This repository is in early foundation development. Local development tooling does not exist yet.
+This repository is in early foundation development. Local infrastructure commands are documented in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Start here
 
