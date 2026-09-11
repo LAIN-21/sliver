@@ -37,7 +37,9 @@ Choose one:
 
 ## Verification performed
 
-List the Required Verification that was run.
+Write `None` when no Required Verification applies.
+
+Otherwise list every Required Verification item from the linked issue. For each item, state whether it ran. If it did not run, explain why. This applies to all verification, not only tests.
 
 ## Tests added/changed
 

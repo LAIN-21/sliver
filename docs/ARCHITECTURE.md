@@ -13,12 +13,13 @@ This document records system-level decisions, assumptions, and open questions. P
 - The old `ripple-challenge` Ledger402 autonomous procurement agent is a reference/demo buyer, not the Sliver architecture.
 - Initial work focuses on structured dataset sellers.
 - Enterprise API integration should eventually converge into the same marketplace abstraction.
-- Intended transaction technology is x402 / XRPL.
+- Sliver is intended to support settlement through the XRP Ledger.
 
 ## Current assumptions
 
 - CSV, JSON, and Parquet are likely early source formats. Support does not exist until it is implemented.
 - Initial pricing is expected to consider coverage and value. The exact formula is not finalized.
+- x402 is the intended mechanism for machine-to-machine payment gating, subject to a later transaction ADR.
 
 ## Open questions
 
@@ -34,6 +35,6 @@ This document records system-level decisions, assumptions, and open questions. P
 - Resource metadata schema
 - Exact pricing formula
 - Whether the four conceptual responsibilities become packages, modules, services, or deployables
-- x402/XRPL integration and settlement architecture: lifecycle, reconciliation, payout, custody, and enforcement location
+- Exact x402/XRPL integration and operational architecture, including transaction lifecycle, enforcement location, reconciliation, payout model, and wallet/key custody
 
 Record significant answers as ADRs. See [adr/README.md](adr/README.md).

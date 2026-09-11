@@ -16,7 +16,7 @@ Create an ADR before or with the change that:
 - Defines transaction architecture
 - Chooses cloud architecture
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md) for current decisions, assumptions, and open questions.
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for current decisions, assumptions, and open questions. Transaction architecture, including x402 integration, remains open until an ADR records it.
 
 ## Format
 

@@ -41,4 +41,6 @@ Architecture References should link to [docs/PRODUCT.md](docs/PRODUCT.md), [docs
 
 Complete every section of the PR template. Write `None` where a section does not apply. Do not use vague answers such as "all done."
 
+List every Required Verification item from the linked issue. For each item, state whether it ran. If an item did not run, explain why. This applies to all verification, not only tests. Write `None` when no Required Verification applies.
+
 If implementation changes established behavior documented in product, architecture, development, or ADR docs, update that documentation in the same PR when it is within Scope.

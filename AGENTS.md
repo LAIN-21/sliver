@@ -64,6 +64,9 @@ An issue that says "modify payments however needed" still cannot override a glob
 - If implementation changes established behavior in [docs/PRODUCT.md](docs/PRODUCT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), or an ADR, update that documentation in the same PR when it is within Scope.
 - Never silently leave authoritative documentation inconsistent with implementation.
 - Run all Required Verification.
+- In the PR, list every Required Verification item from the issue, state whether each ran, and explain why any item did not run.
+- Write `None` when no Required Verification applies.
+- This applies to all verification, not only tests.
 - Never claim a test was run if it was not.
 - Explicitly state tests that were not run and why.
 - Complete the PR template truthfully. Do not write vague answers such as "all done."
