@@ -20,16 +20,21 @@ Humans should open work with a [task](.github/ISSUE_TEMPLATE/task.yml) or [bug](
 
 Agents may create the equivalent Markdown Task issue programmatically. Programmatic creation must mirror the canonical Task schema in [`.github/ISSUE_TEMPLATE/task.yml`](.github/ISSUE_TEMPLATE/task.yml). GitHub form-only mechanics such as field IDs, placeholders, heading rendering, and UI validation do not need to appear in the final issue body.
 
-A task issue is the implementation contract. Fill:
+A task issue is the implementation contract. Field required vs optional semantics match [`.github/ISSUE_TEMPLATE/task.yml`](.github/ISSUE_TEMPLATE/task.yml).
+
+Required:
 
 - Objective
-- Context
 - Scope
 - Out of Scope
 - Allowed Paths
 - Protected Areas
 - Acceptance Criteria
 - Required Verification
+
+Optional:
+
+- Context
 - Dependencies
 - Architecture References
 
