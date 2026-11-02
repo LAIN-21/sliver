@@ -4,7 +4,7 @@ import hashlib
 import hmac
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
@@ -100,10 +100,14 @@ class Provenance(InputModel):
     @classmethod
     def valid_date(cls, value):
         try:
-            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             raise ValueError("Use an ISO 8601 collection date or timestamp.") from None
-        return value
+        # Python accepts compact/week dates that JavaScript Date cannot parse.
+        # Persist one interoperable UTC representation rather than the raw input.
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class ResourceInput(InputModel):

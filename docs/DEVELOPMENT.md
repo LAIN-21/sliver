@@ -164,10 +164,13 @@ API tests, frontend type/build checks, and this real-service browser journey.
 
 Foundation CI runs on pull requests, pushes to `main`, and merge queue events.
 The quality job checks POSIX shell syntax, ShellCheck, actionlint, and Compose
-configuration. The integration job exercises the existing Make interface in an
+configuration. Application CI's combined foundation/seller integration job
+exercises the existing Make interface in an
 isolated Compose project, verifies repeated installation preserves `.env`, and
 requires PostgreSQL and MinIO to be running and healthy. Failed runs collect
-service logs; cleanup always attempts `make dev-stop`.
+service logs; cleanup always attempts `make dev-stop`. Foundation and seller
+checks share one infrastructure lifecycle, avoiding two cold MinIO compilations
+on every pull request.
 
 Checks use synthetic local configuration and read-only repository permissions.
 They do not deploy an application or access production secrets. ShellCheck and

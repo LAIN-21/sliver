@@ -272,6 +272,19 @@ def test_seed_is_idempotent_and_passwords_are_never_default(setup):
     assert not verify_password(PASSWORD, "bad_hash")
 
 
+def test_collection_dates_are_canonical_for_browser_clients(setup):
+    app, *_ = setup
+    client = client_for(app)
+    for supplied, expected in [
+        ("20261102", "2026-11-02T00:00:00Z"),
+        ("2026-W45-1", "2026-11-02T00:00:00Z"),
+        ("2026-11-02T08:00:00+08:00", "2026-11-02T00:00:00Z"),
+    ]:
+        response = upload(client, provenance={**PROVENANCE, "collected_at": supplied})
+        assert response.status_code == 201
+        assert response.json()["provenance"]["collected_at"] == expected
+
+
 def test_titles_provenance_and_metadata_are_validated(setup):
     client = client_for(setup[0])
     assert upload(client, title=" ").status_code == 422

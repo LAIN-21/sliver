@@ -89,8 +89,7 @@ export async function login(email: string, password: string): Promise<Session> {
   return session;
 }
 
-export async function logout(): Promise<Session> {
+export async function logout(): Promise<void> {
   await request<void>("/session", { method: "DELETE" });
   csrfToken = "";
-  return getSession();
 }

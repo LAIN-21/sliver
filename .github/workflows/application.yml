@@ -52,7 +52,7 @@ jobs:
       - run: npm run build --prefix apps/web
 
   seller-journey:
-    name: Seller to reviewed catalog
+    name: Foundation and seller integration
     needs: [api, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -78,8 +78,26 @@ jobs:
           npm ci --prefix apps/web
           cd apps/web
           npx playwright install --with-deps chromium
+      - name: Verify repeatable infrastructure installation
+        run: |
+          set -euo pipefail
+          make doctor
+          make install
+          printf '\n# CI preservation marker\n' >> .env
+          sha256sum .env > "$RUNNER_TEMP/sliver-env.sha256"
+          make install
+          sha256sum --check "$RUNNER_TEMP/sliver-env.sha256"
       - name: Start PostgreSQL and private object storage
-        run: make dev-start
+        run: |
+          set -euo pipefail
+          make dev-start
+          make ps
+          for service in postgres minio; do
+            container=$(docker compose --env-file .env -f compose.yml ps --all --quiet "$service")
+            test -n "$container"
+            state=$(docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' "$container")
+            test "$state" = 'running healthy'
+          done
       - name: Initialize the local demo and start the API
         run: |
           python -m sliver_api.seed
@@ -112,3 +130,5 @@ jobs:
             kill "$(cat "$RUNNER_TEMP/sliver-api.pid")" 2>/dev/null || true
           fi
           make dev-stop
+          containers=$(docker compose --env-file .env -f compose.yml ps --all --quiet)
+          test -z "$containers"

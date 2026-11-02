@@ -22,11 +22,14 @@ const money = (amount: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
     amount / 100,
   );
-const date = (value: string) =>
-  new Intl.DateTimeFormat("en", {
+const date = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Date unavailable";
+  return new Intl.DateTimeFormat("en", {
     dateStyle: "medium",
     timeZone: "UTC",
-  }).format(new Date(value));
+  }).format(parsed);
+};
 const statuses = {
   draft: "Draft",
   submitted: "Awaiting review",
@@ -1089,13 +1092,18 @@ export default function App() {
     setAuthBusy(true);
     setError(null);
     try {
-      const session = await logout();
+      await logout();
+      // Revocation is complete even if creating a new anonymous session fails.
       generation.current += 1;
-      setUser(session.user);
+      setUser(null);
       setDatasets([]);
       setResources([]);
       setNotice("");
       setTab("catalog");
+      setReady(false);
+      setLoading(false);
+      await getSession();
+      setReady(true);
       await refresh(null);
     } catch (failure) {
       setError(failure);

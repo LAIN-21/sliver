@@ -86,9 +86,9 @@ test("private upload, cross-seller isolation, review, and metadata-only publicat
   });
   await upload.getByRole("button", { name: "Upload and validate" }).click();
   await expect(upload.getByRole("alert")).toBeVisible();
-  await expect(page.getByLabel("Select dataset", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("option", { name: title, exact: true }),
+  ).toHaveCount(0);
   await upload.getByLabel("CSV file", { exact: true }).setInputFiles({
     name: "harbor-observations.csv",
     mimeType: "text/csv",
@@ -223,4 +223,147 @@ test("private upload, cross-seller isolation, review, and metadata-only publicat
     path: test.info().outputPath("published-catalog-mobile.png"),
     fullPage: true,
   });
+});
+
+test("successful logout clears private UI when anonymous session bootstrap fails", async ({
+  page,
+}) => {
+  const suffix = `${Date.now()}-${test.info().retry}`;
+  const privateValue = `LOGOUT-PRIVATE-ROW-${suffix}`;
+  const declaration = `Logout regression private rights declaration ${suffix}`;
+  const title = `Logout regression ${suffix}`;
+  await page.goto("/");
+  await signIn(
+    page,
+    "seller-a@sliver.local",
+    password("SLIVER_SELLER_A_PASSWORD"),
+  );
+  const sessionResponse = await page.request.get("/api/session");
+  const session = (await sessionResponse.json()) as { csrf_token: string };
+  const uploadResponse = await page.request.post("/api/datasets", {
+    headers: {
+      Origin: "http://127.0.0.1:5173",
+      "X-CSRF-Token": session.csrf_token,
+    },
+    multipart: {
+      title,
+      provenance: JSON.stringify({
+        source: "Synthetic regression fixture",
+        method: "Generated",
+        collected_at: "2026-11-02",
+        coverage: "Local test only",
+        rights_statement: declaration,
+      }),
+      file: {
+        name: "logout-regression.csv",
+        mimeType: "text/csv",
+        buffer: Buffer.from(`station,waiting_hours\n${privateValue},2\n`),
+      },
+    },
+  });
+  expect(uploadResponse.status()).toBe(201);
+  const dataset = (await uploadResponse.json()) as { id: string };
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Seller workspace", exact: true })
+    .click();
+  await page
+    .getByLabel("Select dataset", { exact: true })
+    .selectOption(dataset.id);
+  await page.getByText("Private rights declaration", { exact: true }).click();
+  await expect(page.getByText(declaration, { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "View private preview" }).click();
+  await expect(
+    page.getByRole("cell", { name: privateValue, exact: true }),
+  ).toBeVisible();
+
+  await page.route("**/api/session", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: {
+            code: "unavailable",
+            message: "Anonymous session is temporarily unavailable.",
+          },
+        }),
+      });
+    } else await route.continue();
+  });
+  const revoked = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/session") &&
+      response.request().method() === "DELETE" &&
+      response.status() === 204,
+  );
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await revoked;
+  await expect(page.getByRole("alert")).toContainText(
+    "Anonymous session is temporarily unavailable.",
+  );
+  await expect(
+    page.getByRole("button", { name: "Sign out", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Seller workspace", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("seller-a@sliver.local", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(privateValue, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(declaration, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Prepare. Review. Publish." }),
+  ).toHaveCount(0);
+  const denied = await page.request.get("/api/datasets");
+  expect(denied.status()).toBe(401);
+});
+
+test("a malformed catalog date does not blank the public interface", async ({
+  page,
+}) => {
+  await page.route("**/api/session", (route) =>
+    route.fulfill({
+      json: { user: null, csrf_token: "synthetic-ui-csrf" },
+    }),
+  );
+  await page.route("**/api/catalog", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: "synthetic-date-regression",
+            title: "Catalog date regression",
+            description: "Synthetic metadata with a malformed legacy date.",
+            price_minor: 1250,
+            currency: "USD",
+            dataset_version: 1,
+            row_count: 1,
+            columns: ["station"],
+            provenance: {
+              source: "Synthetic fixture",
+              method: "Generated",
+              collected_at: "not-a-valid-date",
+              coverage: "Local test",
+            },
+            approved_at: "2026-11-02T00:00:00Z",
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/");
+  const resource = page.getByRole("article", {
+    name: "Published Resource Catalog date regression",
+    exact: true,
+  });
+  await expect(resource).toBeVisible();
+  await resource.getByText("Schema and provenance", { exact: true }).click();
+  await expect(
+    resource.getByText("Date unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Data, with a source." }),
+  ).toBeVisible();
 });
