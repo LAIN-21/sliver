@@ -40,10 +40,22 @@ Typical flow: `make doctor`, `make install`, `make dev-start`. `make dev-start` 
 
 These are not available yet:
 
-- Baseline CI
 - Application stack decision through an ADR
 - Initial application skeleton
 - Isolating application dependencies from contributor machines as much as practical
+
+## Continuous integration
+
+Foundation CI runs on pull requests, pushes to `main`, and merge queue events.
+The quality job checks POSIX shell syntax, ShellCheck, actionlint, and Compose
+configuration. The integration job exercises the existing Make interface in an
+isolated Compose project, verifies repeated installation preserves `.env`, and
+requires PostgreSQL and MinIO to be running and healthy. Failed runs collect
+service logs; cleanup always attempts `make dev-stop`.
+
+Checks use synthetic local configuration and read-only repository permissions.
+They do not deploy an application or access production secrets. ShellCheck and
+actionlint releases are pinned and their downloads verified with SHA-256.
 
 ## Future / not yet committed
 
