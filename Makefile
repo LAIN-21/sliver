@@ -9,7 +9,8 @@ doctor:
 
 install: doctor
 	@$(ensure-env)
-	$(COMPOSE) pull
+	$(COMPOSE) pull --ignore-buildable
+	$(COMPOSE) build minio
 
 dev-start: install
 	$(COMPOSE) up --wait

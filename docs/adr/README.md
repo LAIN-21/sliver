@@ -6,6 +6,8 @@ Accepted records:
 
 - [0001-postgresql-primary-relational-database.md](0001-postgresql-primary-relational-database.md)
 - [0002-s3-compatible-object-storage.md](0002-s3-compatible-object-storage.md)
+- [0003-seller-application-and-review-boundary.md](0003-seller-application-and-review-boundary.md)
+- [0004-minio-source-build.md](0004-minio-source-build.md)
 
 Do not add speculative ADRs.
 
