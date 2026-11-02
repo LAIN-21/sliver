@@ -14,6 +14,12 @@ This document records system-level decisions, assumptions, and open questions. P
 - Initial work focuses on structured dataset sellers.
 - Enterprise API integration should eventually converge into the same marketplace abstraction.
 - Sliver is intended to support settlement through the XRP Ledger.
+- The first seller application uses Python/FastAPI with SQLAlchemy and a
+  TypeScript/React UI built with Vite. PostgreSQL holds metadata and server-side
+  sessions; S3-compatible private storage holds immutable uploaded CSV bytes.
+- The local demo has two sellers and a separate reviewer. Reviewer approval
+  publishes a fixed-price, whole-CSV Resource; public discovery exposes metadata
+  only. See [ADR 0003](adr/0003-seller-application-and-review-boundary.md).
 
 ## Current assumptions
 
@@ -23,15 +29,11 @@ This document records system-level decisions, assumptions, and open questions. P
 
 ## Open questions
 
-- Programming language
-- Frontend framework
-- Backend framework
-- ORM
 - Cloud provider
 - Queue
 - Cache
 - Vector database
-- Authentication provider
+- Production authentication provider (local demo accounts are implemented)
 - Resource metadata schema
 - Exact pricing formula
 - Whether the four conceptual responsibilities become packages, modules, services, or deployables

@@ -1,1 +1,14 @@
 .env
+
+# Application dependencies, caches, and local verification artifacts.
+.venv/
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+test-results/
+playwright-report/

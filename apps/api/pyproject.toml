@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sliver-api"
+version = "0.1.0"
+requires-python = ">=3.11"
+description = "Sliver local seller and reviewed Resource API"
+
+[tool.setuptools.packages.find]
+include = ["sliver_api*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
