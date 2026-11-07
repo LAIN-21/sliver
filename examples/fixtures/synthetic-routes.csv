@@ -1,0 +1,9 @@
+observed_at,route,delay_minutes,delivered_on_time
+2026-11-01T08:00:00Z,Singapore-Jakarta,10,true
+2026-11-02T08:00:00Z,Singapore-Jakarta,20,false
+2026-11-03T08:00:00Z,Singapore-Jakarta,0,true
+2026-11-04T08:00:00Z,Singapore-Jakarta,30,false
+2026-11-01T09:00:00Z,Singapore-Port Klang,5,true
+2026-11-03T09:00:00Z,Singapore-Port Klang,10,true
+2026-11-05T09:00:00Z,Singapore-Port Klang,15,false
+2026-11-07T09:00:00Z,Singapore-Port Klang,10,true

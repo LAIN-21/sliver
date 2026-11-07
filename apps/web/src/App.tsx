@@ -8,8 +8,13 @@ import {
 } from "react";
 import type { FormEvent, ReactElement } from "react";
 import { ApiError, getSession, login, logout, request } from "./api";
+import BuyerWorkspace, {
+  clearBuyerRecovery,
+  paymentLabel,
+} from "./BuyerWorkspace";
 import type {
   Dataset,
+  Marketplace,
   Preview,
   PublicProvenance,
   PublicResource,
@@ -233,7 +238,7 @@ function Catalog({
         <span className="tiny-square" />
         Metadata is public. Dataset contents remain private.
         <span className="note-end">
-          Purchasing is not enabled in this demo.
+          Open Buyer lab to inspect quotes and purchase options.
         </span>
       </div>
       {resources.length === 0 ? (
@@ -1015,7 +1020,11 @@ function ReviewerWorkspace({
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [tab, setTab] = useState<"catalog" | "workspace" | "login">("catalog");
+  const [tab, setTab] = useState<"catalog" | "buyer" | "workspace" | "login">(
+    "catalog",
+  );
+  const [marketplace, setMarketplace] = useState<Marketplace | null>(null);
+  const [buyerSession, setBuyerSession] = useState("");
   const [catalog, setCatalog] = useState<PublicResource[]>([]);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
@@ -1030,7 +1039,7 @@ export default function App() {
       const current = ++generation.current;
       setError(null);
       try {
-        const [publicData, privateDatasets, privateResources] =
+        const [publicData, privateDatasets, privateResources, market] =
           await Promise.all([
             request<{ items: PublicResource[] }>("/catalog", { signal }),
             nextUser
@@ -1039,11 +1048,13 @@ export default function App() {
             nextUser
               ? request<{ items: Resource[] }>("/resources", { signal })
               : Promise.resolve({ items: [] as Resource[] }),
+            request<Marketplace>("/marketplace", { signal }),
           ]);
         if (generation.current !== current || signal?.aborted) return;
         setCatalog(publicData.items);
         setDatasets(privateDatasets.items);
         setResources(privateResources.items);
+        setMarketplace(market);
       } catch (failure) {
         if (generation.current === current && !signal?.aborted) {
           setError(failure);
@@ -1063,6 +1074,7 @@ export default function App() {
       .then(async (session) => {
         if (controller.signal.aborted) return;
         setUser(session.user);
+        setBuyerSession(session.csrf_token);
         setReady(true);
         await refresh(session.user, controller.signal);
       })
@@ -1079,6 +1091,8 @@ export default function App() {
   }, [refresh]);
 
   async function signedIn(session: Session) {
+    clearBuyerRecovery();
+    setBuyerSession(session.csrf_token);
     generation.current += 1;
     setLoading(true);
     setDatasets([]);
@@ -1093,6 +1107,8 @@ export default function App() {
     setError(null);
     try {
       await logout();
+      clearBuyerRecovery();
+      setBuyerSession("");
       // Revocation is complete even if creating a new anonymous session fails.
       generation.current += 1;
       setUser(null);
@@ -1102,7 +1118,8 @@ export default function App() {
       setTab("catalog");
       setReady(false);
       setLoading(false);
-      await getSession();
+      const session = await getSession();
+      setBuyerSession(session.csrf_token);
       setReady(true);
       await refresh(null);
     } catch (failure) {
@@ -1143,6 +1160,13 @@ export default function App() {
             >
               Catalog
             </button>
+            <button
+              className={tab === "buyer" ? "active" : ""}
+              aria-current={tab === "buyer" ? "page" : undefined}
+              onClick={() => navigate("buyer")}
+            >
+              Buyer lab
+            </button>
             {user && (
               <button
                 className={tab === "workspace" ? "active" : ""}
@@ -1180,6 +1204,19 @@ export default function App() {
           </div>
         </div>
       </header>
+      <div
+        className={`payment-banner ${marketplace?.mode ?? "disabled"}`}
+        role="status"
+      >
+        <strong>{paymentLabel(marketplace)}</strong>
+        <span>
+          {marketplace?.mode === "simulated"
+            ? "Demo receipts only · no on-ledger settlement"
+            : marketplace?.mode === "xrpl-testnet"
+              ? "Externally signed testnet payments · no mainnet"
+              : "Discovery remains available · purchases require explicit server configuration"}
+        </span>
+      </div>
       <main id="main-content" tabIndex={-1}>
         <div className="main-inner">
           {notice && (
@@ -1195,6 +1232,9 @@ export default function App() {
                 void getSession()
                   .then(async (session) => {
                     setUser(session.user);
+                    if (session.csrf_token !== buyerSession)
+                      clearBuyerRecovery();
+                    setBuyerSession(session.csrf_token);
                     setReady(true);
                     await refresh(session.user);
                   })
@@ -1213,6 +1253,8 @@ export default function App() {
             />
           ) : loading ? (
             <Loading label="Loading Resources…" />
+          ) : tab === "buyer" ? (
+            <BuyerWorkspace key={buyerSession} marketplace={marketplace} />
           ) : tab === "workspace" && user ? (
             user.role === "seller" ? (
               <SellerWorkspace
@@ -1244,7 +1286,7 @@ export default function App() {
       </main>
       <footer className="site-footer">
         <span>Sliver / Source before sale.</span>
-        <span>Local demonstration · CSV publication only · No payments</span>
+        <span>Local demonstration · {paymentLabel(marketplace)}</span>
       </footer>
     </div>
   );

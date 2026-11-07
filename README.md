@@ -7,9 +7,16 @@ validation, fixed-price Resources, separate reviewer approval, and a public
 metadata-only catalog. The interface uses React/TypeScript and the API uses
 Python/FastAPI, PostgreSQL, and private S3-compatible storage.
 
-Follow [the development guide](docs/DEVELOPMENT.md) to start the infrastructure,
-configure three local demo accounts, and run the API and UI. Payments, buyer
-entitlements, public signup, and production hosting are not implemented.
+The buyer lab adds budget checks, expiring version-bound quotes, explicit
+simulated purchases or external XRPL testnet proof verification, private delivery,
+receipts and a locally computed answer. Simulation is visibly labelled and moves
+no money. The platform never signs buyer payments.
+
+Follow [the development guide](docs/DEVELOPMENT.md) for PostgreSQL/MinIO or the
+explicit loopback recording adapter (`python examples/local_demo.py`). The latter
+uses dedicated SQLite/private local files and synthetic fixtures, including on
+native Windows. Public signup, mainnet commerce and production hosting remain
+outside this local demonstration.
 
 ## Start here
 

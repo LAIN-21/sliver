@@ -2,22 +2,25 @@
 
 import hashlib
 import hmac
+import ipaddress
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import PurePosixPath
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
 from .csv_validation import MAX_FILE_BYTES, InvalidCSV, inspect_csv
-from .models import Dataset, LoginSession, Resource, User, identifier, utcnow
+from .models import Dataset, LoginSession, Quote, Resource, User, identifier, utcnow
+from .payments import valid_classic_address, verify_testnet_payment
 from .security import hash_password, token_hash, verify_password
 from .storage import ObjectStore, S3Store
 
@@ -123,6 +126,27 @@ class ReviewInput(InputModel):
     reason: str = Field(min_length=1, max_length=2000)
 
 
+class QuoteInput(InputModel):
+    resource_id: str = Field(min_length=1, max_length=36)
+    buyer_address: str | None = Field(default=None, min_length=25, max_length=35)
+
+    @field_validator("buyer_address")
+    @classmethod
+    def classic_address(cls, value):
+        if value is not None and not valid_classic_address(value):
+            raise ValueError("Use a valid classic XRPL account address.")
+        return value
+
+
+class ConfirmInput(InputModel):
+    transaction_hash: str | None = Field(default=None, pattern=r"^[A-Fa-f0-9]{64}$")
+
+    @field_validator("transaction_hash")
+    @classmethod
+    def normalized_hash(cls, value):
+        return value.upper() if value else None
+
+
 def iso(value):
     return value.isoformat(timespec="seconds") + "Z" if value else None
 
@@ -146,6 +170,19 @@ def resource_json(resource):
             "description": resource.description, "price_minor": resource.price_minor,
             "currency": resource.currency, "status": resource.status,
             "review_reason": resource.review_reason, "created_at": iso(resource.created_at)}
+
+
+def quote_json(quote):
+    return {"id": quote.id, "resource_id": quote.resource_id, "title": quote.title,
+            "dataset_version": quote.dataset_version, "sha256": quote.sha256,
+            "size_bytes": quote.size_bytes, "price_minor": quote.price_minor,
+            "currency": quote.currency, "mode": quote.mode, "network": quote.network,
+            "amount_drops": quote.amount_drops, "pay_to": quote.pay_to,
+            "buyer_address": quote.buyer_address, "memo": quote.id,
+            "expires_at": iso(quote.expires_at), "status": quote.status,
+            "transaction_hash": quote.transaction_hash, "receipt_id": quote.receipt_id,
+            "paid_at": iso(quote.paid_at),
+            "download_url": f"/api/quotes/{quote.id}/download" if quote.status == "paid" else None}
 
 
 def create_app(settings: Settings, *, engine=None, store: ObjectStore | None = None) -> FastAPI:
@@ -325,7 +362,7 @@ def create_app(settings: Settings, *, engine=None, store: ObjectStore | None = N
     def read_bytes(dataset):
         try:
             data = store.get(dataset.object_key)
-            if hashlib.sha256(data).hexdigest() != dataset.sha256:
+            if len(data) != dataset.size_bytes or hashlib.sha256(data).hexdigest() != dataset.sha256:
                 raise ValueError("Stored content no longer matches the immutable upload digest")
             return data
         except Exception:
@@ -396,15 +433,165 @@ def create_app(settings: Settings, *, engine=None, store: ObjectStore | None = N
         return resource_json(resource)
 
     @api.get("/api/catalog")
-    def catalog(db: DB):
-        rows = db.execute(select(Resource, Dataset).join(Dataset, Resource.dataset_id == Dataset.id)
-                          .where(Resource.status == "approved").order_by(Resource.approved_at.desc()))
-        return {"items": [{"id": r.id, "title": r.title, "description": r.description,
+    def catalog(db: DB, q: Annotated[str, Query(max_length=200)] = "",
+                max_price_minor: Annotated[int | None, Query(ge=0, le=100_000_000)] = None,
+                limit: Annotated[int, Query(ge=1, le=100)] = 50,
+                offset: Annotated[int, Query(ge=0, le=1_000_000)] = 0):
+        if "\0" in q:
+            fail(422, "invalid_input", "Search must not contain NUL characters.")
+        query = select(Resource, Dataset).join(Dataset, Resource.dataset_id == Dataset.id).where(
+            Resource.status == "approved")
+        if q.strip():
+            # contains(autoescape) treats wildcard characters as literal input.
+            query = query.where(or_(func.lower(Resource.title).contains(q.strip().lower(), autoescape=True),
+                                    func.lower(Resource.description).contains(q.strip().lower(), autoescape=True)))
+        if max_price_minor is not None:
+            query = query.where(Resource.price_minor <= max_price_minor)
+        total = db.scalar(select(func.count()).select_from(query.subquery()))
+        rows = db.execute(query.order_by(Resource.approved_at.desc(), Resource.id).offset(offset).limit(limit))
+        return {"total": total, "items": [{"id": r.id, "title": r.title, "description": r.description,
                            "price_minor": r.price_minor, "currency": r.currency,
+                           "sha256": d.sha256, "size_bytes": d.size_bytes,
                            "dataset_version": 1, "row_count": d.row_count, "columns": d.columns,
                            "provenance": {key: d.provenance[key] for key in
                                           ("source", "method", "collected_at", "coverage")},
                            "approved_at": iso(r.approved_at)} for r, d in rows]}
+
+    def payment_available(request: Request, mode=None):
+        if settings.payment_mode == "disabled":
+            fail(503, "payments_disabled", "Payment confirmation is disabled in this server configuration.")
+        if mode and mode != settings.payment_mode:
+            fail(409, "payment_mode_changed", "This quote belongs to a different payment mode. Create a new quote.")
+        if settings.payment_mode == "simulated":
+            try:
+                local = request.client and ipaddress.ip_address(request.client.host).is_loopback
+            except ValueError:
+                local = False
+            if not local:
+                fail(403, "simulation_local_only", "Simulated purchases are available only over loopback.")
+
+    def owned_quote(quote_id, request, db):
+        if "\0" in quote_id or len(quote_id) > 36:
+            fail(404, "not_found", "Quote not found.")
+        session = current_session(request, db)
+        quote = db.get(Quote, quote_id) if session else None
+        if not quote or quote.owner_session_hash != session.token_hash:
+            fail(404, "not_found", "Quote not found.")
+        return quote
+
+    @api.get("/api/marketplace")
+    def marketplace():
+        mode = settings.payment_mode
+        return {"mode": mode, "network": "simulation" if mode == "simulated" else
+                ("xrpl:1" if mode == "xrpl-testnet" else None),
+                "quote_ttl_seconds": settings.quote_ttl_seconds,
+                "price_note": "SIMULATED / NO REAL MONEY" if mode == "simulated" else
+                ("XRPL TESTNET ONLY. Illustrative conversion; no live FX: "
+                 f"{settings.testnet_drops_per_usd} testnet drops per USD." if mode == "xrpl-testnet"
+                 else "Payments are disabled."),
+                "capabilities": {"quotes": mode != "disabled", "simulated_confirmation": mode == "simulated",
+                                 "testnet_verification": mode == "xrpl-testnet", "server_signing": False}}
+
+    @api.post("/api/quotes", status_code=201)
+    def create_quote(body: QuoteInput, request: Request, db: DB):
+        session = csrf(request, db)
+        payment_available(request)
+        if settings.payment_mode == "xrpl-testnet" and body.buyer_address is None:
+            fail(422, "buyer_address_required", "A classic buyer account address is required for testnet verification.")
+        row = db.execute(select(Resource, Dataset).join(Dataset, Resource.dataset_id == Dataset.id)
+                         .where(Resource.id == body.resource_id, Resource.status == "approved")).first()
+        if not row:
+            fail(404, "not_found", "Approved Resource not found.")
+        resource, dataset = row
+        real = settings.payment_mode == "xrpl-testnet"
+        quote = Quote(owner_session_hash=session.token_hash, resource_id=resource.id, dataset_id=dataset.id,
+                      dataset_version=1, object_key=dataset.object_key, title=resource.title,
+                      sha256=dataset.sha256, size_bytes=dataset.size_bytes, price_minor=resource.price_minor,
+                      currency=resource.currency, mode=settings.payment_mode,
+                      network="xrpl:1" if real else "simulation",
+                      amount_drops=str((resource.price_minor * settings.testnet_drops_per_usd + 99) // 100) if real else None,
+                      pay_to=settings.xrpl_pay_to if real else None, buyer_address=body.buyer_address,
+                      expires_at=utcnow() + timedelta(seconds=settings.quote_ttl_seconds))
+        db.add(quote)
+        db.commit()
+        return quote_json(quote)
+
+    @api.get("/api/quotes/{quote_id}")
+    def get_quote(quote_id: str, request: Request, db: DB):
+        return quote_json(owned_quote(quote_id, request, db))
+
+    @api.post("/api/quotes/{quote_id}/confirm")
+    def confirm_quote(quote_id: str, request: Request, response: Response, db: DB,
+                      body: ConfirmInput = Body(default=ConfirmInput())):
+        csrf(request, db)
+        quote = owned_quote(quote_id, request, db)
+        payment_available(request, quote.mode)
+        if quote.mode == "simulated" and body.transaction_hash:
+            fail(422, "simulation_no_transaction", "Simulation accepts no ledger transaction hash.")
+        if quote.mode == "xrpl-testnet" and not body.transaction_hash:
+            fail(422, "transaction_hash_required", "Provide the 64-character testnet transaction hash.")
+        if quote.transaction_hash and quote.transaction_hash != body.transaction_hash:
+            fail(409, "payment_attempt_locked", "Reconcile the original transaction hash; do not send another payment.")
+        if quote.status == "paid":
+            return quote_json(quote)
+        if quote.status == "failed":
+            fail(409, "payment_failed", "This payment proof failed verification. No purchase was granted.")
+        now = utcnow()
+        if quote.mode == "simulated":
+            db.execute(update(Quote).where(Quote.id == quote.id, Quote.status == "quoted", Quote.expires_at > now)
+                       .values(status="paid", receipt_id="SIM-" + quote.id, paid_at=now))
+            db.commit()
+            db.refresh(quote)
+            if quote.status != "paid":
+                fail(410, "quote_expired", "This quote expired. Create a new quote before confirming.")
+            return quote_json(quote)
+        if quote.status == "quoted":
+            # Record the immutable attempt before I/O, but do not globally reserve
+            # unverified public hashes: another quote may be their rightful payee.
+            db.execute(update(Quote).where(Quote.id == quote.id, Quote.status == "quoted", Quote.expires_at > now)
+                       .values(status="pending", transaction_hash=body.transaction_hash))
+            db.commit()
+            db.refresh(quote)
+        if quote.status == "quoted":
+            fail(410, "quote_expired", "This quote expired before a payment attempt was recorded.")
+        if quote.transaction_hash != body.transaction_hash:
+            fail(409, "payment_attempt_locked", "Reconcile the original transaction hash; do not send another payment.")
+        # End the read transaction before slow RPC I/O; updates below are conditional.
+        db.commit()
+        outcome = verify_testnet_payment(quote, settings.xrpl_rpc_url)
+        if outcome in {"paid", "failed"}:
+            values = {"status": outcome}
+            if outcome == "paid":
+                values.update(receipt_id="TESTNET-" + quote.id, paid_at=utcnow(),
+                              settled_transaction_hash=body.transaction_hash)
+            try:
+                # Only verified settlement claims the globally unique proof. The
+                # uniqueness constraint and state transition commit atomically.
+                db.execute(update(Quote).where(Quote.id == quote.id, Quote.status == "pending",
+                                              Quote.transaction_hash == body.transaction_hash).values(**values))
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                fail(409, "payment_proof_used", "This verified transaction already settled another quote.")
+        db.refresh(quote)
+        if quote.status == "failed":
+            fail(422, "invalid_payment_proof", "The validated transaction did not meet this quote's payment requirements.")
+        if quote.status == "pending":
+            response.status_code = 202
+        return quote_json(quote)
+
+    @api.get("/api/quotes/{quote_id}/download")
+    def purchase_download(quote_id: str, request: Request, db: DB):
+        quote = owned_quote(quote_id, request, db)
+        if quote.status != "paid":
+            raise HTTPException(status_code=402, detail={"code": "payment_required",
+                                "message": "Confirm this quote before downloading its private bytes.",
+                                "requirements": quote_json(quote)})
+        if quote.dataset_version != 1:
+            fail(409, "version_unavailable", "The purchased immutable version is unavailable.")
+        return Response(content=read_bytes(quote), media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="purchase-{quote.id}.csv"',
+                                 "X-Content-SHA256": quote.sha256})
 
     return api
 

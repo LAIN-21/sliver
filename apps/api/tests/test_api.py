@@ -170,7 +170,7 @@ def test_review_publishes_only_safe_metadata_and_terminal_state(setup):
     seller = client_for(app)
     dataset, resource = draft(seller)
     public = TestClient(app)
-    assert public.get("/api/catalog").json() == {"items": []}
+    assert public.get("/api/catalog").json() == {"items": [], "total": 0}
     assert seller.post(f"/api/resources/{resource['id']}/review", json={"decision": "approve", "reason": "self"}).status_code == 403
     assert seller.post(f"/api/resources/{resource['id']}/submit").status_code == 200
     assert seller.post(f"/api/resources/{resource['id']}/submit").status_code == 409
@@ -182,7 +182,7 @@ def test_review_publishes_only_safe_metadata_and_terminal_state(setup):
     catalog = public.get("/api/catalog")
     item = catalog.json()["items"][0]
     assert set(item) == {"id", "title", "description", "price_minor", "currency", "dataset_version",
-                         "row_count", "columns", "provenance", "approved_at"}
+                         "row_count", "columns", "provenance", "approved_at", "sha256", "size_bytes"}
     assert set(item["provenance"]) == {"source", "method", "collected_at", "coverage"}
     for secret in ("PRIVATE_ROW_ALPHA", "PRIVATE_ROW_BETA", "PRIVATE_RIGHTS_DECLARATION_ONLY",
                    "object_key", "filename", "dataset_id", "owner_id", "csrf_token"):
@@ -202,7 +202,7 @@ def test_rejection_requires_reason_and_cannot_be_resubmitted(setup):
     assert reviewer.post(url, json={"decision": "reject", "reason": " "}).status_code == 422
     assert reviewer.post(url, json={"decision": "reject", "reason": "Rights evidence missing"}).json()["status"] == "rejected"
     assert seller.post(f"/api/resources/{resource['id']}/submit").status_code == 409
-    assert TestClient(app).get("/api/catalog").json() == {"items": []}
+    assert TestClient(app).get("/api/catalog").json() == {"items": [], "total": 0}
 
 
 @pytest.mark.parametrize("price", [0, -1, 1.5, True, "100", 100_000_001])

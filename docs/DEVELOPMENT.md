@@ -19,7 +19,9 @@ Native Windows cmd or PowerShell is not a supported host contract in this founda
 Local PostgreSQL/MinIO infrastructure, a Python/FastAPI seller API, and a
 React/TypeScript UI. The seller demonstration includes private CSV upload,
 structural validation, fixed-price Resources, reviewer approval, and a public
-metadata-only catalog. Payments and buyer delivery are not implemented.
+metadata-only catalog. Issue #8 adds a local buyer demonstration with explicit
+simulation or external XRPL testnet verification and quoted-version delivery;
+production payments and deployment are not implemented.
 
 Host tools: Git, Docker with Compose v2, Make.
 
@@ -124,7 +126,7 @@ SameSite Strict. Use `SESSION_SECURE=true` only with HTTPS.
 | `GET`, `POST /api/resources` | Seller lists own/creates draft; reviewer lists all |
 | `POST /api/resources/{id}/submit` | Owner only; draft to submitted |
 | `POST /api/resources/{id}/review` | Reviewer only; submitted to approved/published or rejected |
-| `GET /api/catalog` | Public approved metadata; no paid bytes or purchase endpoint |
+| `GET /api/catalog` | Approved metadata with bounded search/price filtering/pagination; no paid bytes |
 
 A Dataset is a private immutable uploaded version. A Resource is a priced view
 over that version; this first slice offers the whole CSV only. Prices are positive
@@ -134,8 +136,9 @@ the uploaded bytes, published price, or published Resource version.
 
 CSV checks establish file quality. Reviewer approval records a human decision;
 neither proves legal ownership, licensing permission, or factual accuracy.
-External agents retain their own spending decisions. No model or application
-path in this slice signs payments, issues entitlements, or serves buyers paid rows.
+External agents retain their own spending decisions. The platform never signs
+buyer payments. Local quoted-version delivery is described below, separately
+from the original owner/reviewer download endpoint.
 
 ### Application checks
 
@@ -181,5 +184,67 @@ actionlint releases are pinned and their downloads verified with SHA-256.
 - Production deployment workflow
 - Production identity, signup, abuse/rate controls, schema migrations, expired
   session cleanup, and object lifecycle/retention policies
-- x402/XRPL transaction architecture, entitlements, and buyer delivery
+- Production x402 interoperability, durable buyer identity/access recovery,
+  reconciliation scheduling, accounting and payout design
 - JSON/Parquet adapters and finer-grained Resource views
+
+## Record the complete local demonstration
+
+For recording without Docker, explicitly select the separate recording adapter.
+It also works in native Windows PowerShell. It uses a dedicated ignored
+`.sliver-demo/current/` SQLite database/private-object directory and simulated payments;
+it does not open or reset existing PostgreSQL/MinIO data.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r apps/api/requirements-dev.txt
+npm ci --prefix apps/web
+.\.venv\Scripts\python.exe examples/local_demo.py
+```
+
+In another terminal run `npm run dev --prefix apps/web`, then open
+<http://127.0.0.1:5173>. The runner prints the generated credential-file location,
+not passwords. Keep that file private. Repeated launch preserves demo data.
+On macOS/Linux use `.venv/bin/python` for the same explicit runner.
+
+The runner seeds three synthetic route-performance offers through the normal
+seller/reviewer APIs. Open **Buyer lab**, set a budget, inspect candidates,
+request a quote, explicitly confirm the **SIMULATED / NO REAL MONEY** purchase,
+then download/analyze the CSV. Show the receipt, exact-version digest and route
+table. `examples/buyer_client.py` provides a separate external-client run.
+
+Historical/premium offers demonstrate metadata/price comparison. Their records
+are fictional and do not establish real shipping performance.
+
+### Purchase API and payment modes
+
+- `GET /api/marketplace`: configured mode and pricing explanation.
+- `POST /api/quotes`: approved Resource ID and, in testnet mode, buyer address;
+  snapshot terms with a five-minute expiry.
+- `GET /api/quotes/{id}`: owning-session quote/receipt state.
+- `POST /api/quotes/{id}/confirm`: explicit simulated confirmation or an actual
+  testnet transaction hash. Mutations require existing CSRF and Origin checks.
+- `GET /api/quotes/{id}/download`: owning-session paid bytes; unpaid requests
+  receive 402 and integrity failures fail closed.
+
+`SLIVER_PAYMENT_MODE` defaults to `disabled`. `simulated` is loopback-only.
+`xrpl-testnet` requires `XRPL_TESTNET_PAY_TO`, the supported official RPC and an
+external payer. Quotes bind native-XRP amount, payer, recipient and memo.
+`SLIVER_TESTNET_DROPS_PER_USD` is an illustrative conversion, not live FX.
+Never put a buyer wallet seed in the API environment.
+
+If a submitted proof is pending or the network is unavailable, reconcile the same
+attempt; do not switch to simulation or authorize another payment. This contract
+does not claim full x402 transport compliance or atomic payment/data exchange.
+
+Access is tied to the current browser session; logout, login rotation or expiry
+may end recovery access. Persistent identity and recovery need follow-up.
+Schema bootstrap creates additive tables only, not a migration history.
+
+### Demo verification and recording
+
+Run `python -m pytest apps/api/tests apps/web/e2e/test_buyer_client.py -q`, frontend typecheck/build, then Playwright
+with the three account password variables matching the seed. The dedicated buyer
+walkthrough records video with synthetic data/payment mode visible. Adapter runs
+and hosted PostgreSQL/MinIO runs must be identified separately. A recording proves
+that run, not a production SLA or that live testnet settlement was exercised.

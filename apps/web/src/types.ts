@@ -53,4 +53,37 @@ export type PublicResource = Pick<
   columns: string[];
   provenance: PublicProvenance;
   approved_at: string;
+  sha256: string;
+  size_bytes: number;
+  dataset_id?: string;
+};
+
+export type Marketplace = {
+  mode: "disabled" | "simulated" | "xrpl-testnet";
+  network: "simulation" | "xrpl:1" | null;
+  quote_ttl_seconds: number;
+  price_note: string;
+  capabilities: Record<string, unknown>;
+};
+export type Quote = {
+  id: string;
+  resource_id: string;
+  title: string;
+  dataset_version: number;
+  sha256: string;
+  size_bytes: number;
+  price_minor: number;
+  currency: "USD";
+  mode: Marketplace["mode"];
+  network: Marketplace["network"];
+  buyer_address: string | null;
+  amount_drops: string | null;
+  pay_to: string | null;
+  memo: string;
+  expires_at: string;
+  status: "quoted" | "pending" | "paid" | "failed";
+  transaction_hash: string | null;
+  receipt_id: string | null;
+  paid_at: string | null;
+  download_url: string | null;
 };

@@ -32,3 +32,16 @@ ingestion → inspection → provenance/trust validation → Resource generation
 Buyer flow:
 
 information need → discovery → candidate Resources → buyer decision → purchase → entitlement → delivery → accounting
+
+## Local demonstration scope
+
+The seller workflow publishes reviewed whole-CSV offers. The buyer demonstration
+adds metadata search, session-bound quotes, labelled simulated settlement or
+external XRPL testnet verification, and permission to retrieve exact quoted bytes.
+The buyer UI/example enforces its own budget and computes a source-linked result
+after download. Simulation is not a commercial transaction; testnet conversion
+is illustrative rather than a live exchange-rate quote.
+
+Production buyer identity, custody/payout, durable recovery, accounting and
+deployment remain pilot decisions. Reviewer approval records a human publication
+decision, not independently verified ownership or factual truth.

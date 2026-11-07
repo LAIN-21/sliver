@@ -12,3 +12,6 @@ __pycache__/
 htmlcov/
 test-results/
 playwright-report/
+
+# Explicit recording adapter: private bytes, sessions and generated credentials.
+.sliver-demo/

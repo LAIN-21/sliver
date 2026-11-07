@@ -1,4 +1,4 @@
-name: Seller application CI
+name: Marketplace application CI
 
 on:
   pull_request:
@@ -34,7 +34,7 @@ jobs:
           python -m pip install -r apps/api/requirements-dev.txt
           python -m pip install -e apps/api --no-deps
       - name: Verify API behavior
-        run: python -m pytest apps/api/tests -q
+        run: python -m pytest apps/api/tests apps/web/e2e/test_buyer_client.py -q
 
   web:
     name: Frontend types and build
@@ -52,7 +52,7 @@ jobs:
       - run: npm run build --prefix apps/web
 
   seller-journey:
-    name: Foundation and seller integration
+    name: Foundation, seller, and buyer integration
     needs: [api, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -61,6 +61,7 @@ jobs:
       SLIVER_SELLER_A_PASSWORD: ci-seller-a-password
       SLIVER_SELLER_B_PASSWORD: ci-seller-b-password
       SLIVER_REVIEWER_PASSWORD: ci-reviewer-password
+      SLIVER_PAYMENT_MODE: simulated
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -105,7 +106,7 @@ jobs:
           echo "$!" > "$RUNNER_TEMP/sliver-api.pid"
           curl --fail --silent --show-error --retry 30 --retry-delay 1 --retry-connrefused \
             http://127.0.0.1:8000/api/health
-      - name: Verify seller, reviewer, and public catalog journey
+      - name: Verify seller, reviewer, and buyer journeys with recorded walkthrough
         run: npm run test:e2e --prefix apps/web
       - name: Failure diagnostics
         if: failure()
@@ -118,7 +119,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: seller-browser-evidence
+          name: marketplace-browser-evidence
           path: apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7

@@ -20,12 +20,21 @@ This document records system-level decisions, assumptions, and open questions. P
 - The local demo has two sellers and a separate reviewer. Reviewer approval
   publishes a fixed-price, whole-CSV Resource; public discovery exposes metadata
   only. See [ADR 0003](adr/0003-seller-application-and-review-boundary.md).
+- Local buyer quotes snapshot whole-CSV terms and bind access to an existing
+  browser session. Payment modes default to disabled, with explicit loopback
+  simulation or externally paid XRPL testnet verification. Signing and budget
+  decisions stay in the external client. See
+  [ADR 0005](adr/0005-local-demo-purchase-and-payment-boundary.md).
+- An explicit recording runner injects SQLite/private local-file adapters.
+  Normal environment configuration continues to require PostgreSQL/S3;
+  real-service integration evidence is reported separately.
 
 ## Current assumptions
 
 - CSV, JSON, and Parquet are likely early source formats. Support does not exist until it is implemented.
 - Initial pricing is expected to consider coverage and value. The exact formula is not finalized.
-- x402 is the intended mechanism for machine-to-machine payment gating, subject to a later transaction ADR.
+- x402 remains the intended interoperability direction. The local demo purchase
+  contract is not advertised as a complete x402 wire implementation.
 
 ## Open questions
 

@@ -13,10 +13,10 @@ export class ApiError extends Error {
 
 let csrfToken = "";
 
-export async function request<T>(
+async function responseFor(
   path: string,
   options: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   const method = options.method ?? "GET";
   const headers = new Headers(options.headers);
   if (method !== "GET" && method !== "HEAD") {
@@ -70,8 +70,52 @@ export async function request<T>(
     }
     throw new ApiError(response.status, message, issues);
   }
+  return response;
+}
+
+export async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const response = await responseFor(path, options);
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+export async function downloadBytes(
+  path: string,
+  signal?: AbortSignal,
+): Promise<ArrayBuffer> {
+  const response = await responseFor(path, { signal });
+  const maxBytes = 5 * 1024 * 1024;
+  const length = response.headers.get("Content-Length");
+  if (length && Number(length) > maxBytes)
+    throw new Error("CSV exceeds the 5 MiB local analysis limit.");
+  if (!response.body) throw new Error("The download returned no body.");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new Error("CSV exceeds the 5 MiB local analysis limit.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
 }
 
 export async function getSession(signal?: AbortSignal): Promise<Session> {
