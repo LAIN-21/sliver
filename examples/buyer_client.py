@@ -131,8 +131,8 @@ def prepare_wallet():
     return wallet
 
 
-def sign_once(quote: dict, wallet, args, state: dict, client: httpx.Client) -> str:
-    """Persist a hash before submitting once; recovery only reconciles that hash."""
+def sign_once(quote: dict, wallet, args, state: dict, client: httpx.Client, headers: dict) -> str:
+    """Register a durable attempt before broadcasting once; reconcile that hash."""
     from xrpl.clients import JsonRpcClient
     from xrpl.models.transactions import Memo, Payment
     from xrpl.transaction import autofill_and_sign, submit
@@ -172,6 +172,22 @@ def sign_once(quote: dict, wallet, args, state: dict, client: httpx.Client) -> s
     require_live_quote()
     transaction_hash = signed.get_hash()
     state["transaction_hash"] = transaction_hash
+    save_state(args.state, state, client)
+    # Register while the quote is live, before any funds can move. A slow ledger
+    # submission may then cross expiry without losing same-hash reconciliation.
+    # Registration errors/unknown responses must never cause a broadcast.
+    registered = request_json(client, "POST", f"/api/quotes/{quote['id']}/confirm",
+                              json={"transaction_hash": transaction_hash}, headers=headers)
+    if (any(registered.get(key) != quote.get(key) for key in ("id", "mode", "network"))
+            or registered.get("transaction_hash") != transaction_hash
+            or registered.get("status") not in {"pending", "paid"}):
+        raise BuyerError("Payment attempt registration was not confirmed. No payment was submitted; keep the recovery file.")
+    state["quote"] = registered
+    state["payment_attempt_registered"] = True
+    save_state(args.state, state, client)
+    if registered["status"] == "paid":
+        return transaction_hash
+    require_live_quote()
     state["submission_started"] = True
     save_state(args.state, state, client)
     try:
@@ -272,7 +288,7 @@ def run(args) -> int:
         if args.sign_testnet and quote["status"] != "paid":
             if old_quote:
                 raise BuyerError("Signing is only available on a newly selected quote; reconcile saved attempts without --sign-testnet.")
-            proof = sign_once(quote, wallet, args, state, client)
+            proof = sign_once(quote, wallet, args, state, client, headers)
         if proof:
             if not re.fullmatch(r"[0-9A-Fa-f]{64}", proof):
                 raise BuyerError("Transaction hash must contain exactly 64 hexadecimal characters.")

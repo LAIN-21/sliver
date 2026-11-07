@@ -233,6 +233,13 @@ external payer. Quotes bind native-XRP amount, payer, recipient and memo.
 `SLIVER_TESTNET_DROPS_PER_USD` is an illustrative conversion, not live FX.
 Never put a buyer wallet seed in the API environment.
 
+The optional external signer saves its signed hash and registers the owning
+quote's pending attempt with Sliver before broadcasting to the ledger. Any
+registration error or unknown response refuses broadcast. This lets a slow
+submission reconcile the same registered hash after quote expiry; it never
+permits an expired quote's first payment attempt. A pending quote alone is not
+payment evidence and cannot release the CSV.
+
 If a submitted proof is pending or the network is unavailable, reconcile the same
 attempt; do not switch to simulation or authorize another payment. This contract
 does not claim full x402 transport compliance or atomic payment/data exchange.

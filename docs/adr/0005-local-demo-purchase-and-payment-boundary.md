@@ -14,6 +14,7 @@ Accepted for issue #8's explicitly requested recordable demonstration on 7 Novem
 - Persist each quote's attempted hash before network verification, without globally reserving an unverified public hash. Bind a separate globally unique settled hash only on the verified paid transition; invalid/pending attempts cannot preempt another buyer's legitimate payment. Duplicate confirmations return the existing result. Pending/unknown outcomes reconcile the same proof without creating another payment. Authoritative confirmation and successful file delivery remain distinct facts.
 - Buyer download requires the owning valid session, paid state, matching snapshotted version and intact bytes. Existing owner/reviewer downloads remain unchanged.
 - The buyer interface/example decides whether a candidate fits its budget before confirmation, downloads original bytes, verifies the digest and computes the example result locally. Data/metadata never authorize arbitrary spending destinations.
+- The optional external signer durably saves the signed transaction hash and registers the pending attempt while the quote is live before broadcasting once. Registration failure/unknown outcome refuses broadcast. A slow submission can then reconcile that registered hash after expiry without weakening the expired-first-attempt boundary.
 - Add bounded metadata search/price filtering/pagination and public digest/size so a client can understand and verify the offer. Do not expose previews, private declarations, filenames or storage keys.
 
 ## Recording adapter
