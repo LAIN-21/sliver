@@ -163,3 +163,27 @@ def test_example_catalog_seeds_cleanly(sessions, store):
         pytest.skip("example datasets are not available in this environment")
     result = seed(sessions, store, folder)
     assert result["published_resources"] == result["created_resources"] > 4
+
+
+def test_filter_only_misses_and_later_pages_are_not_unmet_demand(seeded, client, sessions):
+    assert search(client, q="berth", max_price_minor=100)["total"] == 0
+    search(client, q="berth", offset=2)
+    with sessions() as db:
+        events = db.scalars(select(SearchEvent)).all()
+    assert [(event.result_count, event.filters) for event in events] == [(3, {"max_price_minor": 100})]
+    assert client.get("/api/demand").json()["items"] == []
+
+
+def test_unexpected_coverage_keys_stay_private(seeded, client, sessions):
+    with sessions() as db:
+        resource = db.scalar(select(Resource).where(Resource.title.endswith("October 2026")))
+        resource.coverage = {
+            **resource.coverage,
+            "internal_note": "PRIVATE",
+            "time": {**resource.coverage["time"], "x": 1},
+        }
+        db.commit()
+        resource_id = resource.id
+    coverage = client.get(f"/api/catalog/{resource_id}").json()["coverage"]
+    assert set(coverage) == {"time", "slice"}
+    assert set(coverage["time"]) == {"column", "start", "end"}

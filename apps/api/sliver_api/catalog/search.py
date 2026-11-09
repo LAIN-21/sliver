@@ -36,14 +36,21 @@ def _published() -> Select:
     )
 
 
+def _any_term(q: str):
+    # Agents describe needs in many words; match any of them and rank by relevance.
+    return func.to_tsquery("english", func.replace(func.plainto_tsquery("english", q).cast(Text), "&", "|"))
+
+
+def count_text_matches(db: Session, q: str) -> int:
+    statement = _published().where(Resource.search_vector.op("@@")(_any_term(q)))
+    return db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+
+
 def search_catalog(db: Session, query: CatalogQuery) -> dict:
     statement = _published()
     rank = None
     if query.q.strip():
-        # Agents describe needs in many words; match any of them and rank by relevance.
-        any_term = func.to_tsquery(
-            "english", func.replace(func.plainto_tsquery("english", query.q).cast(Text), "&", "|")
-        )
+        any_term = _any_term(query.q)
         rank = func.ts_rank_cd(Resource.search_vector, any_term)
         statement = statement.where(Resource.search_vector.op("@@")(any_term))
     if query.category:
@@ -70,8 +77,12 @@ def search_catalog(db: Session, query: CatalogQuery) -> dict:
             top_score = max(top_score, item["relevance"])
         items.append(item)
 
-    if query.q.strip():
-        record_search(db, query, total, top_score)
+    if query.q.strip() and query.offset == 0:
+        # Demand reflects what the text asked for: a miss caused only by filters (price, category,
+        # columns) is not unmet demand, so record how many Resources match the text alone.
+        filtered = query.category or query.max_price_minor is not None or query.columns
+        text_matches = total if total or not filtered else count_text_matches(db, query.q)
+        record_search(db, query, text_matches, top_score)
     return {"items": items, "total": total, "limit": limit, "offset": max(0, query.offset)}
 
 

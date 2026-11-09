@@ -15,10 +15,12 @@ export default function MarketplacePage() {
   const category = params.get("category") ?? "";
   const maxUsd = params.get("max") ?? "";
   const [draft, setDraft] = useState(q);
+  const [maxDraft, setMaxDraft] = useState(maxUsd);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => setDraft(q), [q]);
+  useEffect(() => setMaxDraft(maxUsd), [maxUsd]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,7 +31,7 @@ export default function MarketplacePage() {
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    const maxPriceMinor = maxUsd ? Math.round(Number(maxUsd) * 100) : undefined;
+    const maxPriceMinor = toPriceMinor(maxUsd);
     searchCatalog({ q, category, maxPriceMinor: maxPriceMinor || undefined }, controller.signal)
       .then((page) => setState({ kind: "ready", page }))
       .catch((error: unknown) => {
@@ -50,7 +52,9 @@ export default function MarketplacePage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    update({ q: draft.trim() });
+    // Price applies on submit (like the query), so typing does not fire a search per keystroke.
+    const minor = toPriceMinor(maxDraft);
+    update({ q: draft.trim(), max: minor ? String(minor / 100) : "" });
   }
 
   return (
@@ -93,8 +97,8 @@ export default function MarketplacePage() {
         <input
           id="max"
           inputMode="decimal"
-          value={maxUsd}
-          onChange={(event) => update({ max: event.target.value.replace(/[^\d.]/g, "") })}
+          value={maxDraft}
+          onChange={(event) => setMaxDraft(event.target.value.replace(/[^\d.]/g, ""))}
           placeholder="Max $"
           className="w-full rounded-lg border border-line px-3 py-2 sm:w-28"
         />
@@ -127,4 +131,13 @@ export default function MarketplacePage() {
       ) : null}
     </>
   );
+}
+
+// The API accepts 1 cent to 1,000,000 USD (100,000,000 cents).
+const MAX_PRICE_MINOR = 100_000_000;
+
+function toPriceMinor(usd: string): number | undefined {
+  const minor = Math.round(Number(usd) * 100);
+  if (!Number.isFinite(minor) || minor <= 0) return undefined;
+  return Math.min(minor, MAX_PRICE_MINOR);
 }
