@@ -7,8 +7,8 @@ Accepted records:
 - [0001-postgresql-primary-relational-database.md](0001-postgresql-primary-relational-database.md)
 - [0002-s3-compatible-object-storage.md](0002-s3-compatible-object-storage.md)
 - [0003-application-stack-and-local-containers.md](0003-application-stack-and-local-containers.md)
-- [0004-x402-payments-on-xrpl.md](0004-x402-payments-on-xrpl.md)
-- [0005-platform-fee-model.md](0005-platform-fee-model.md): Sliver's platform fee, recorded per sale and settled off-chain. It fills the marketplace fee that ADR 0004 left out of scope, without changing ADR 0004's payment flow.
+- [0004-x402-payments-on-xrpl.md](0004-x402-payments-on-xrpl.md). Its direct-to-seller, non-custodial settlement is **superseded by ADR 0005**; the rest stands.
+- [0005-platform-collection-and-payouts.md](0005-platform-collection-and-payouts.md): buyers pay Sliver's platform wallet, Sliver keeps its fee (10% by default) and pays sellers their net every 15 days.
 
 Do not add speculative ADRs.
 
@@ -24,7 +24,7 @@ Create an ADR before or with the change that:
 - Defines transaction architecture
 - Chooses cloud architecture
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md) for current decisions, assumptions, and open questions. Transaction architecture and the x402 integration are recorded in ADR 0004; the platform fee model in ADR 0005.
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for current decisions, assumptions, and open questions. Transaction architecture and the x402 integration are recorded in ADR 0004; collection, the platform fee and seller payouts in ADR 0005.
 
 ## Format
 

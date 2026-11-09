@@ -9,7 +9,7 @@ from starlette.datastructures import UploadFile
 
 from ..auth.deps import CurrentReviewer, CurrentSeller, CurrentUser
 from ..deps import DB
-from ..models import Dataset, PipelineStep, Resource, User
+from ..models import Dataset, PipelineStep, Resource, User, utcnow
 from ..pipeline.table import MAX_FILE_BYTES
 from . import pricing
 from .insights import insights
@@ -188,6 +188,6 @@ def publish_dataset(
 
 @router.get("/insights")
 def seller_insights(request: Request, db: DB, seller: CurrentSeller) -> dict:
-    """Unmet buyer demand and the signed-in seller's earnings (gross, Sliver's fee, net), with
-    transaction links."""
-    return insights(db, seller, request.app.state.settings.sliver_platform_fee_bps)
+    """Unmet buyer demand, the signed-in seller's earnings (gross, Sliver's fee, net) with
+    transaction links, and the balance Sliver owes them with the next payout date."""
+    return insights(db, seller, request.app.state.settings.sliver_platform_fee_bps, utcnow().date())

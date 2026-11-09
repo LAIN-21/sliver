@@ -138,8 +138,8 @@ function Publish({
     <>
       <p className="mt-1 text-sm text-muted">
         Each sliver gets a suggested price from quality, uniqueness against the catalog, buyer demand, public availability
-        and coverage. Accept it or type your own price, then publish. Buyers pay you the full price directly on the XRP Ledger
-        Testnet; Sliver's {formatBps(report.platform_fee.bps)} fee is recorded on each sale and settled with you off-chain.
+        and coverage. Accept it or type your own price, then publish. Buyers pay Sliver on the XRP Ledger Testnet; Sliver keeps
+        its {formatBps(report.platform_fee.bps)} fee and pays you the rest on the 1st and 16th of each month.
       </p>
       {full?.valuation ? (
         <p className="mt-4 text-sm">
@@ -262,7 +262,7 @@ function SliverRow({
         </td>
         <td
           className="px-3 py-2 tabular-nums whitespace-nowrap"
-          title={`After Sliver's ${formatBps(feeBps)} fee, settled off-chain`}
+          title={`After Sliver's ${formatBps(feeBps)} fee, paid out on the 1st and 16th`}
         >
           {invalid ? "—" : formatPrice(netAfterFee(price ?? result.suggested_price_minor, feeBps))}
         </td>
@@ -331,7 +331,7 @@ function NetNote({ priceMinor, bps }: { priceMinor: number; bps: number }) {
   return (
     <span className="text-muted">
       You receive <span className="font-medium text-ink tabular-nums">{formatPrice(netAfterFee(priceMinor, bps))}</span> after
-      Sliver's {formatBps(bps)}, settled off-chain. The buyer pays you the full price.
+      Sliver's {formatBps(bps)}, paid out on the 1st and 16th of each month.
     </span>
   );
 }
@@ -412,9 +412,9 @@ function Published({ report }: { report: ValuationReport }) {
   return (
     <>
       <p className="mt-1 text-sm text-muted">
-        These slivers are live in the catalog. Agents buy them with x402 and pay you the full price directly on the XRP
-        Ledger Testnet. Sliver's fee (currently {formatBps(report.platform_fee.bps)}) is recorded on each sale and settled with
-        you off-chain.
+        These slivers are live in the catalog. Agents buy them with x402 on the XRP Ledger Testnet and pay Sliver. Sliver
+        keeps its fee (currently {formatBps(report.platform_fee.bps)}) and pays you the rest on the 1st and 16th of each
+        month; see Insights for your balance.
       </p>
       <ExplanationBox report={report} />
       {!report.payout_ready ? (
@@ -475,7 +475,7 @@ function PublishedRow({
       <tr className="border-t border-line">
         <td className="px-3 py-2 [overflow-wrap:anywhere]">{sliver.label}</td>
         <td className="px-3 py-2 font-medium tabular-nums">{sliver.price_minor ? formatPrice(sliver.price_minor) : "—"}</td>
-        <td className="px-3 py-2 tabular-nums" title={`After Sliver's current ${formatBps(feeBps)} fee, settled off-chain`}>
+        <td className="px-3 py-2 tabular-nums" title={`After Sliver's current ${formatBps(feeBps)} fee, paid out on the 1st and 16th`}>
           {sliver.price_minor ? formatPrice(netAfterFee(sliver.price_minor, feeBps)) : "—"}
         </td>
         <td className="px-3 py-2 text-muted tabular-nums">

@@ -42,17 +42,17 @@ def public_event(event: ActivityEvent, title: str | None, resource_status: str |
 
 
 def public_fee(payment: Payment | None) -> dict | None:
-    """Sliver's platform fee on a delivered sale (ADR 0005), or None when none was recorded.
+    """How a delivered sale Sliver collected splits (ADR 0005), or None for any other purchase.
 
     Explicit allow-list: the rate, Sliver's fee and the seller's net, all derived from the public
-    price. The buyer paid the full price to the seller on-chain; the fee is settled off-chain.
+    price. The buyer paid the full price to Sliver's platform wallet; Sliver pays the seller's net
+    on its 15-day payout schedule. Payout status is the seller's business and is not shown.
     """
     if payment is None or payment.status != "delivered" or payment.platform_fee_bps is None:
         return None
     drops = payment.platform_fee_drops is not None
     return {
         "bps": payment.platform_fee_bps,
-        "settlement": "off_chain",
         "fee": {
             "usd_minor": payment.platform_fee_minor,
             "xrp_drops": str(payment.platform_fee_drops) if drops else None,

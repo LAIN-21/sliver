@@ -25,11 +25,12 @@ Pricing considers both coverage and value. Sliver suggests an explainable price 
 
 Sellers list data for sale. On every sale the seller gets paid and Sliver takes a cut, the platform fee (10% by default).
 
-- The buyer pays the full listed price straight to the seller on-chain, with one standard x402 payment. Sliver never holds funds.
-- Sliver's cut is recorded on each sale, together with the seller's net, and settled with the seller off-chain for now (invoiced). An on-chain split is on the roadmap.
-- Sellers see the gross, Sliver's fee and their net for every sale and in total, and the net they would receive at a price before they publish.
+- The buyer pays the full listed price to Sliver's platform wallet, with one standard x402 payment.
+- Sliver keeps its fee and pays the seller the rest every 15 days (on the 1st and 16th of each month). Payouts are not automated yet.
+- Sellers see the balance Sliver owes them, the next payout date, and the gross, Sliver's fee and their net for every sale. Before publishing, they see the net they would receive at each price.
+- Testnet only. Sliver holds funds between a sale and the payout, so Mainnet use needs custody and compliance work first.
 
-See [ADR 0005](adr/0005-platform-fee-model.md).
+See [ADR 0005](adr/0005-platform-collection-and-payouts.md).
 
 ## Conceptual flows
 

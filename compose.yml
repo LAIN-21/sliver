@@ -18,6 +18,8 @@ x-app-environment: &app-environment
   FACILITATOR_URL: ${FACILITATOR_URL:-https://xrpl-facilitator-testnet.t54.ai}
   XRPL_RPC_URL: ${XRPL_RPC_URL:-https://s.altnet.rippletest.net:51234/}
   DROPS_PER_USD: ${DROPS_PER_USD:-400000}
+  # Sliver's platform wallet (ADR 0005), written by `make wallets`. Only the address, never the seed.
+  SLIVER_PLATFORM_ADDRESS: ${SLIVER_PLATFORM_ADDRESS:-}
   SLIVER_PLATFORM_FEE_BPS: ${SLIVER_PLATFORM_FEE_BPS:-1000}
   # Seller accounts and sessions. Empty passwords leave the demo accounts unable to sign in.
   SLIVER_SELLER_PASSWORD: ${SLIVER_SELLER_PASSWORD:-}

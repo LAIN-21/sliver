@@ -74,16 +74,15 @@ function Insights() {
   if (state.kind === "loading") return <p className="text-muted">Loading…</p>;
   if (state.kind === "error") return <p className="text-red-700">{state.message}</p>;
   const { insights } = state;
-  const { earnings, demand } = insights;
+  const { earnings, demand, balance } = insights;
   const rate = formatBps(insights.platform_fee.bps);
 
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <PageHeader title="Demand and earnings">
-          What buyers searched for and could not find, and what agents paid you. Buyers pay the full price straight to your
-          XRPL Testnet address; Sliver never holds funds. Sliver's {rate} fee is recorded on each sale and settled with you
-          off-chain.
+        <PageHeader title="Balance, earnings and demand">
+          What Sliver owes you, what agents bought, and what buyers searched for and could not find. Buyers pay Sliver's
+          platform wallet on the XRPL Testnet; Sliver keeps its {rate} fee and pays you the rest every 15 days.
         </PageHeader>
         <LiveBadge status={status} />
       </div>
@@ -96,25 +95,51 @@ function Insights() {
         </div>
       ) : null}
 
-      <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Stat label="Paid to you (gross)" value={formatPrice(earnings.usd_minor)} hint={formatAmount(earnings.xrp_drops, "XRP")} />
-        <Stat label="Net after Sliver's fee" value={formatPrice(earnings.net.usd_minor)} hint={drops(earnings.net)} />
+      <section aria-labelledby="balance" className="rounded-xl border border-brand/20 bg-brand-soft/40 p-5">
+        <h2 id="balance" className="text-lg font-semibold">
+          Balance
+        </h2>
+        <dl className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Stat
+            label="Sliver owes you"
+            value={formatPrice(balance.owed.usd_minor)}
+            hint={`${drops(balance.owed) ?? ""} · ${balance.sales_owed} sale${balance.sales_owed === 1 ? "" : "s"} not paid out yet`}
+          />
+          <Stat label="Next payout" value={formatPayoutDate(balance.next_payout_date)} hint={`Payouts run on the ${balance.schedule}.`} />
+          <div className="min-w-0 rounded-xl border border-line bg-white p-5">
+            <dt className="text-sm text-muted">Payout address</dt>
+            <dd className="mt-1 font-medium">
+              {insights.payout_address ? <AccountLink address={insights.payout_address} size={8} /> : "Not set (run make wallets)"}
+            </dd>
+          </div>
+        </dl>
+        <h3 className="mt-5 font-medium">Payout history</h3>
+        {balance.payouts.length ? (
+          <ul className="mt-2 space-y-1 text-sm">
+            {balance.payouts.map((payout) => (
+              <li key={payout.paid_out_at} className="tabular-nums">
+                {formatDateTime(payout.paid_out_at)}: {formatPrice(payout.usd_minor)} for {payout.sales} sale
+                {payout.sales === 1 ? "" : "s"}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-1 text-sm text-muted">
+            No payouts yet. Payouts are not automated in this demo; your balance is paid to your payout address.
+          </p>
+        )}
+      </section>
+
+      <dl className="mt-6 grid gap-4 sm:grid-cols-3">
+        <Stat label="Paid by buyers (gross)" value={formatPrice(earnings.usd_minor)} hint={formatAmount(earnings.xrp_drops, "XRP")} />
+        <Stat label="Sliver's fee" value={formatPrice(earnings.platform_fee.usd_minor)} hint={`Current rate ${rate}`} />
         <Stat
-          label="Fee owed to Sliver"
-          value={formatPrice(earnings.fee_owed.usd_minor)}
-          hint={`Current rate ${rate}. Settled off-chain; not invoiced yet.`}
+          label="Your net"
+          value={formatPrice(earnings.net.usd_minor)}
+          hint={`${earnings.purchases} purchase${earnings.purchases === 1 ? "" : "s"}${
+            earnings.direct_purchases ? `, ${earnings.direct_purchases} paid to you directly before Sliver collected` : ""
+          }`}
         />
-        <Stat
-          label="Purchases delivered"
-          value={earnings.purchases.toLocaleString("en-US")}
-          hint={earnings.purchases_without_fee ? `${earnings.purchases_without_fee} from before the fee, no fee owed` : undefined}
-        />
-        <div className="min-w-0 rounded-xl border border-line bg-white p-5">
-          <dt className="text-sm text-muted">Payout address</dt>
-          <dd className="mt-1 font-medium">
-            {insights.payout_address ? <AccountLink address={insights.payout_address} size={8} /> : "Not set (run make wallets)"}
-          </dd>
-        </div>
       </dl>
 
       <h2 className="mt-10 text-lg font-semibold">Earnings</h2>
@@ -128,6 +153,7 @@ function Insights() {
                 <th className="px-3 py-2 font-medium">Paid (gross)</th>
                 <th className="px-3 py-2 font-medium">Sliver's fee</th>
                 <th className="px-3 py-2 font-medium">Net to you</th>
+                <th className="px-3 py-2 font-medium">Payout</th>
                 <th className="px-3 py-2 font-medium">Transaction</th>
                 <th className="px-3 py-2 font-medium">
                   <span className="sr-only">Timeline</span>
@@ -156,12 +182,21 @@ function Insights() {
                         <span className="text-muted">({formatBps(item.platform_fee.bps)})</span>
                       </>
                     ) : (
-                      <span className="text-muted" title="Sold before Sliver's platform fee existed">
-                        None (before fee)
+                      <span className="text-muted" title="Paid straight to you before Sliver collected payments">
+                        None (paid to you)
                       </span>
                     )}
                   </td>
                   <td className="px-3 py-2 font-medium tabular-nums whitespace-nowrap">{formatPrice(item.net.usd_minor)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {item.payout.status === "owed" ? (
+                      <span className="text-amber-800">Owed, {formatPayoutDate(balance.next_payout_date)}</span>
+                    ) : item.payout.status === "paid" ? (
+                      <span className="text-emerald-700">Paid {item.payout.paid_out_at ? formatAgo(item.payout.paid_out_at, now) : ""}</span>
+                    ) : (
+                      <span className="text-muted">Paid directly</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <TxLink hash={item.transaction.hash} />
                   </td>
@@ -229,6 +264,10 @@ function Insights() {
       )}
     </>
   );
+}
+
+function formatPayoutDate(isoDate: string): string {
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 function drops(money: Money): string | undefined {

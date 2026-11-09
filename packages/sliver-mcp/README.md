@@ -2,7 +2,7 @@
 
 Free, open-source MCP server that lets any agent search [Sliver](../../README.md), check whether a data sliver fits its need, and buy it with x402 on the XRP Ledger **Testnet**, within budget limits you set.
 
-It is the buyer's own tool. It runs on your machine over stdio, signs payments locally with your Testnet wallet, and pays the seller directly. The seed never leaves your machine and Sliver never sees it. Sliver never decides to spend: your agent and you do.
+It is the buyer's own tool. It runs on your machine over stdio, signs payments locally with your Testnet wallet, and pays Sliver's platform wallet, which keeps its fee and pays the seller every 15 days. The seed never leaves your machine and Sliver never sees it. Sliver never decides to spend: your agent and you do.
 
 ## Tools
 
@@ -28,7 +28,7 @@ The server tells agents to evaluate before buying, to say so and look elsewhere 
 - no `budget_usd` is given, or the price exceeds it;
 - the price exceeds the per-purchase cap or would push the last 24 hours over the daily cap;
 - another purchase is in flight on this machine;
-- the 402 challenge is not XRPL Testnet (`xrpl:1`) XRP, asks for an amount other than the listing's USD price converted at the disclosed rate (rounded up, as the Sliver API does), or a payee other than the seller's address pinned on your first purchase from that seller.
+- the 402 challenge is not XRPL Testnet (`xrpl:1`) XRP, asks for an amount other than the listing's USD price converted at the disclosed rate (rounded up, as the Sliver API does), or a payee other than Sliver's platform address pinned on your first purchase from that Sliver API.
 
 The signed Payment follows the official XRPL `exact` scheme and the t54 facilitator: `InvoiceID = SHA-256(invoiceId)`, `SourceTag` from the challenge, a bounded `LastLedgerSequence`, a capped fee, and no Memos, SendMax, DeliverMin, Paths or partial-payment flag. Delivered bytes that do not match the listing's SHA-256 are saved with an `.unverified` suffix and flagged. A payment that left your machine counts toward the daily cap even if delivery fails.
 

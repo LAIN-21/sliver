@@ -1,7 +1,8 @@
-"""Platform fee (ADR 0005): the fee rate, Sliver's fee and the seller's net on each delivered sale.
+"""Platform fee and seller payouts (ADR 0005): rate, Sliver's fee, seller's net, payout time.
 
-Existing delivered payments are not backfilled: they were sold under ADR 0004, before any fee
-existed, so their fee columns stay NULL ("no fee recorded") and they owe Sliver nothing.
+Existing delivered payments are not backfilled: they were paid straight to the seller under
+ADR 0004, so Sliver never held the money. Their fee columns stay NULL ("not collected by Sliver"):
+no fee, nothing owed to the seller.
 
 Revision ID: 0008_platform_fee
 Revises: 0007_valuation
@@ -24,6 +25,7 @@ def upgrade() -> None:
     op.add_column("payments", sa.Column("seller_net_minor", sa.Integer()))
     op.add_column("payments", sa.Column("platform_fee_drops", sa.BigInteger()))
     op.add_column("payments", sa.Column("seller_net_drops", sa.BigInteger()))
+    op.add_column("payments", sa.Column("seller_paid_out_at", sa.DateTime(timezone=True)))
     op.create_check_constraint(
         "payments_platform_fee",
         "payments",
@@ -38,11 +40,16 @@ def upgrade() -> None:
         "(platform_fee_drops IS NULL) = (seller_net_drops IS NULL)"
         " AND (platform_fee_drops IS NULL OR platform_fee_bps IS NOT NULL)",
     )
+    op.create_check_constraint(
+        "payments_seller_paid_out", "payments", "seller_paid_out_at IS NULL OR platform_fee_bps IS NOT NULL"
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint("payments_seller_paid_out", "payments", type_="check")
     op.drop_constraint("payments_platform_fee_drops", "payments", type_="check")
     op.drop_constraint("payments_platform_fee", "payments", type_="check")
+    op.drop_column("payments", "seller_paid_out_at")
     op.drop_column("payments", "seller_net_drops")
     op.drop_column("payments", "platform_fee_drops")
     op.drop_column("payments", "seller_net_minor")

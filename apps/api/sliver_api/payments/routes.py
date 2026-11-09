@@ -70,7 +70,7 @@ def receipt(payment_id: Annotated[str, Path(max_length=36)], db: DB) -> dict:
             "explorer_url": explorer_url(payment.tx_hash),
         },
         "settled_at": payment.settled_at.isoformat().replace("+00:00", "Z") if payment.settled_at else None,
-        # Recorded, not paid on-chain: the buyer paid the full amount to `pay_to` (ADR 0005).
+        # The buyer paid the full amount to Sliver (`pay_to`); the seller's net is paid out later.
         "platform_fee": public_fee(payment),
     }
 

@@ -537,7 +537,7 @@ def test_a_published_sliver_is_bought_with_x402_and_shows_in_the_sellers_earning
     earnings = seller.get("/api/seller/insights").json()
     assert earnings["earnings"]["purchases"] == 1 and earnings["earnings"]["usd_minor"] == 450
     assert earnings["earnings"]["net"]["usd_minor"] == 405
-    assert earnings["earnings"]["fee_owed"]["usd_minor"] == 45
+    assert earnings["balance"]["owed"]["usd_minor"] == 405 and earnings["balance"]["sales_owed"] == 1
     (item,) = earnings["earnings"]["items"]
     assert item["transaction"]["hash"] == signed.get_hash()
     assert item["transaction"]["explorer_url"] == f"https://testnet.xrpl.org/transactions/{signed.get_hash()}"
@@ -556,8 +556,7 @@ def test_a_published_sliver_is_bought_with_x402_and_shows_in_the_sellers_earning
         "xrp_drops": "0",
         "platform_fee": zero,
         "net": zero,
-        "fee_owed": zero,
-        "purchases_without_fee": 0,
+        "direct_purchases": 0,
         "items": [],
     }
     assert sliver["id"] not in theirs["resource_ids"]

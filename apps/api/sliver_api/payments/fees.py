@@ -1,9 +1,10 @@
-"""Sliver's platform fee (ADR 0005): recorded on each sale, settled with the seller off-chain.
+"""Sliver's platform fee (ADR 0005): kept from each sale Sliver collects.
 
-The buyer still pays the full listed price straight to the seller with one standard x402
-Payment; nothing here changes the 402 requirements, verification or the ledger re-check. When a
-sale is delivered, the fee rate in force is snapshotted on the payment row with the fee and the
-seller's net, so a later rate change never rewrites a past sale.
+Buyers pay the full listed price to Sliver's platform wallet with one standard x402 Payment.
+When such a sale is delivered, the fee rate in force is snapshotted on the payment row with
+Sliver's fee and the seller's net, the amount Sliver owes the seller at the next payout. A later
+rate change never rewrites a past sale. Sales paid straight to a seller (before ADR 0005) get no
+fee: Sliver never held that money and owes nothing for it.
 
 Integer math only. Rounding rule: the fee is rounded down to a whole drop and a whole cent
 (`gross * bps // 10_000`), so rounding always favours the seller, and the net is the remainder,
@@ -36,12 +37,12 @@ def split(gross: int, bps: int) -> Split:
     return Split(gross=gross, fee=fee, net=gross - fee)
 
 
-def record_fee(payment: Payment, bps: int) -> None:
-    """Snapshot the fee on a payment that is being delivered. A recorded fee is never replaced.
+def record_fee(payment: Payment, bps: int, platform_address: str) -> None:
+    """Snapshot the fee on a sale being delivered, if Sliver collected it. Never replaced.
 
     Everything is computed before any attribute is set, so an error leaves the row untouched.
     """
-    if payment.platform_fee_bps is not None:
+    if payment.platform_fee_bps is not None or not platform_address or payment.pay_to != platform_address:
         return
     usd = split(payment.price_minor, bps)
     # Drops are a digit string for XRP; any other asset keeps only the USD figures.

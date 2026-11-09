@@ -14,6 +14,9 @@ from sliver_api.db import make_engine, make_session_factory
 from sliver_api.main import create_app
 from sliver_api.storage import MemoryStore
 
+# Sliver's platform wallet in tests (ADR 0005): every 402 asks buyers to pay this address.
+PLATFORM_ADDRESS = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+
 API_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -65,6 +68,7 @@ def settings(database_url) -> Settings:
         s3_bucket=os.environ.get("TEST_S3_BUCKET", "sliver-test"),
         # Off by default so a test's request count never matters; test_ratelimit.py turns it on.
         sliver_rate_limit_enabled=False,
+        sliver_platform_address=PLATFORM_ADDRESS,
     )
 
 

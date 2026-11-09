@@ -94,10 +94,11 @@ def render_block(run: dict[str, Any]) -> str:
     lines = [
         f"_Written by `make demo` on {run['finished_at']} (run `{run['run_id']}`). "
         f"Each transaction was read back from XRPL Testnet (`{run['rpc_host']}`): a validated "
-        "`tesSUCCESS` Payment from the buyer's wallet straight to the seller. "
+        "`tesSUCCESS` Payment from the buyer's wallet to Sliver's platform wallet, which pays the "
+        "seller their net on the next payout (ADR 0005). "
         "Re-run `make demo` to replace this block; do not edit it by hand._",
         "",
-        "| Transaction | Ledger | Amount | Buyer → seller | Sliver |",
+        "| Transaction | Ledger | Amount | Buyer → Sliver platform | Sliver |",
         "|---|---|---|---|---|",
     ]
     for tx in run["transactions"]:
@@ -596,10 +597,13 @@ class Demo:
         for tx in transactions:
             if tx["tx_hash"].upper() not in hashes:
                 raise DemoError(f"{tx['tx_hash']} is missing from the seller's earnings.")
-        earnings = insights["earnings"]
+        earnings, balance = insights["earnings"], insights.get("balance") or {}
+        owed = (balance.get("owed") or {}).get("usd_minor", 0)
         say(
             f"  seller insights: {earnings['purchases']} delivered purchases, "
-            f"${earnings['usd_minor'] / 100:.2f} earned ({self.web_url}/sell/insights)"
+            f"${earnings['usd_minor'] / 100:.2f} paid by buyers to Sliver, ${owed / 100:.2f} owed to the "
+            f"seller at the next payout ({balance.get('next_payout_date', '?')}) "
+            f"({self.web_url}/sell/insights)"
         )
 
     def record(

@@ -122,7 +122,7 @@ export default function ResourcePage() {
         <p className="text-3xl font-semibold tabular-nums">{formatPrice(resource.price.amount_minor)}</p>
         <h2 className="mt-5 font-semibold">Buy with your agent</h2>
         <p className="mt-1 text-sm text-muted">
-          Agents pay per request with x402 on the XRP Ledger Testnet, straight to the seller. The free Sliver MCP lets
+          Agents pay per request with x402 on the XRP Ledger Testnet, to Sliver, which pays the seller. The free Sliver MCP lets
           any agent search, check fit and buy within your budget.
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg bg-ink p-3 text-xs text-white">{MCP_INSTALL}</pre>
