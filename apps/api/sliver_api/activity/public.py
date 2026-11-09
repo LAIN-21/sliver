@@ -6,7 +6,7 @@ Resource is published.
 """
 
 from ..catalog.public import iso
-from ..models import ActivityEvent
+from ..models import ActivityEvent, Payment
 from ..payments.x402 import explorer_url
 
 UNLISTED = "Unlisted resource"
@@ -38,4 +38,27 @@ def public_event(event: ActivityEvent, title: str | None, resource_status: str |
         ),
         "detail": event.detail,
         "agent_note": event.agent_note,
+    }
+
+
+def public_fee(payment: Payment | None) -> dict | None:
+    """Sliver's platform fee on a delivered sale (ADR 0005), or None when none was recorded.
+
+    Explicit allow-list: the rate, Sliver's fee and the seller's net, all derived from the public
+    price. The buyer paid the full price to the seller on-chain; the fee is settled off-chain.
+    """
+    if payment is None or payment.status != "delivered" or payment.platform_fee_bps is None:
+        return None
+    drops = payment.platform_fee_drops is not None
+    return {
+        "bps": payment.platform_fee_bps,
+        "settlement": "off_chain",
+        "fee": {
+            "usd_minor": payment.platform_fee_minor,
+            "xrp_drops": str(payment.platform_fee_drops) if drops else None,
+        },
+        "seller_net": {
+            "usd_minor": payment.seller_net_minor,
+            "xrp_drops": str(payment.seller_net_drops) if drops else None,
+        },
     }

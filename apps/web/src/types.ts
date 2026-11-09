@@ -205,7 +205,17 @@ export type PurchaseTimeline = {
   payer: string | null;
   transaction: Transaction | null;
   agent_note: string | null;
+  platform_fee: PublicFee | null;
   events: ActivityEvent[];
+};
+
+// Sliver's platform fee on a delivered sale (ADR 0005), from activity/public.py `public_fee`. The
+// buyer paid the full price to the seller on-chain; the fee is recorded and settled off-chain.
+export type PublicFee = {
+  bps: number;
+  settlement: "off_chain";
+  fee: { usd_minor: number; xrp_drops: string | null };
+  seller_net: { usd_minor: number; xrp_drops: string | null };
 };
 
 // Valuation and publication, mirroring apps/api/sliver_api/valuation.py and seller/pricing.py.
@@ -250,6 +260,8 @@ export type ValuationReport = {
   explanation: Explanation | null;
   slivers: SliverValuation[];
   sample: { max_rows: number; selected: number[]; header: string[]; candidates: SampleCandidate[] };
+  // The current platform fee rate; each sale snapshots the rate in force when it is delivered.
+  platform_fee: { bps: number };
 };
 
 export type DemandItem = {
@@ -264,16 +276,32 @@ export type Earning = {
   payment_id: string;
   resource: { id: string; title: string };
   amount: { value: string; asset: string; usd_minor: number };
+  // null: no fee was recorded (a sale delivered before the platform fee existed).
+  platform_fee: ({ bps: number } & Money) | null;
+  net: Money;
   network: string;
   payer: string | null;
   settled_at: string | null;
   transaction: { hash: string; ledger_index: number | null; explorer_url: string };
 };
 
+export type Money = { usd_minor: number; xrp_drops: string | null };
+
 export type SellerInsights = {
   cursor: number;
   resource_ids: string[];
   payout_address: string | null;
-  earnings: { purchases: number; usd_minor: number; xrp_drops: string; items: Earning[] };
+  platform_fee: { bps: number; settlement: "off_chain" };
+  earnings: {
+    purchases: number;
+    // Gross: what buyers paid the seller on-chain.
+    usd_minor: number;
+    xrp_drops: string;
+    platform_fee: Money;
+    net: Money;
+    fee_owed: Money;
+    purchases_without_fee: number;
+    items: Earning[];
+  };
   demand: { days: number; items: DemandItem[] };
 };

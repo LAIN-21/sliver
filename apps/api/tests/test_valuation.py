@@ -523,7 +523,10 @@ def test_a_published_sliver_is_bought_with_x402_and_shows_in_the_sellers_earning
         ).xrpl_address = harness.SELLER.address
         db.commit()
     dataset_id = accepted(seller, sessions, store)
-    sliver = report(seller, dataset_id)["slivers"][1]
+    priced = report(seller, dataset_id)
+    # The seller's pricing panel gets the current platform fee rate (ADR 0005) to show their net.
+    assert priced["platform_fee"] == {"bps": 1_000}
+    sliver = priced["slivers"][1]
     publish(seller, dataset_id, prices={sliver["id"]: 450})
 
     response, signed, _ = harness.pay(buyer, sliver["id"], ledger)
@@ -533,6 +536,8 @@ def test_a_published_sliver_is_bought_with_x402_and_shows_in_the_sellers_earning
 
     earnings = seller.get("/api/seller/insights").json()
     assert earnings["earnings"]["purchases"] == 1 and earnings["earnings"]["usd_minor"] == 450
+    assert earnings["earnings"]["net"]["usd_minor"] == 405
+    assert earnings["earnings"]["fee_owed"]["usd_minor"] == 45
     (item,) = earnings["earnings"]["items"]
     assert item["transaction"]["hash"] == signed.get_hash()
     assert item["transaction"]["explorer_url"] == f"https://testnet.xrpl.org/transactions/{signed.get_hash()}"
@@ -544,7 +549,17 @@ def test_a_published_sliver_is_bought_with_x402_and_shows_in_the_sellers_earning
     other = make_client()
     sign_in(other, "other@example.test")
     theirs = other.get("/api/seller/insights").json()
-    assert theirs["earnings"] == {"purchases": 0, "usd_minor": 0, "xrp_drops": "0", "items": []}
+    zero = {"usd_minor": 0, "xrp_drops": "0"}
+    assert theirs["earnings"] == {
+        "purchases": 0,
+        "usd_minor": 0,
+        "xrp_drops": "0",
+        "platform_fee": zero,
+        "net": zero,
+        "fee_owed": zero,
+        "purchases_without_fee": 0,
+        "items": [],
+    }
     assert sliver["id"] not in theirs["resource_ids"]
 
 

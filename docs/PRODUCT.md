@@ -21,6 +21,16 @@ Enterprise and API integrations are a later input mechanism into the same Resour
 
 Pricing considers both coverage and value. Sliver suggests an explainable price for each sliver from its quality, uniqueness against the catalog, unmet buyer demand, public availability and coverage; the seller accepts or overrides it before publishing. The formula is an architecture question, not a product invariant. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Business model
+
+Sellers list data for sale. On every sale the seller gets paid and Sliver takes a cut, the platform fee (10% by default).
+
+- The buyer pays the full listed price straight to the seller on-chain, with one standard x402 payment. Sliver never holds funds.
+- Sliver's cut is recorded on each sale, together with the seller's net, and settled with the seller off-chain for now (invoiced). An on-chain split is on the roadmap.
+- Sellers see the gross, Sliver's fee and their net for every sale and in total, and the net they would receive at a price before they publish.
+
+See [ADR 0005](adr/0005-platform-fee-model.md).
+
 ## Conceptual flows
 
 These sequences describe product behavior. They are not service, package, or deployable boundaries.

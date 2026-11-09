@@ -1,6 +1,6 @@
 # Sliver
 
-**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, and pay the seller directly on XRPL Testnet with one retried HTTP request. Sliver never holds funds or buyer keys and never spends on a buyer's behalf.
+**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, and pay the seller directly on XRPL Testnet with one retried HTTP request. Sliver never holds funds or buyer keys and never spends on a buyer's behalf. Sliver earns a platform fee (10% by default) that is recorded on each sale and settled with the seller off-chain.
 
 Ripple track. Built after the team's SingHacks finalist [Ledger402](https://github.com/LAIN-21/ripple-challenge), see [Since SingHacks](#since-singhacks).
 
@@ -148,6 +148,7 @@ sequenceDiagram
   S->>F: /settle
   F->>L: Submit Payment (buyer → seller)
   S->>L: Re-check the validated transaction
+  S->>S: Record Sliver's fee and the seller's net<br/>(settled off-chain, not paid by the buyer)
   S-->>A: 200 CSV + PAYMENT-RESPONSE + X-Sliver-Receipt
   Note over A: Verify SHA-256 of the bytes,<br/>report tx hash and explorer link
 ```
@@ -160,6 +161,7 @@ sequenceDiagram
 6. **Settle.** The facilitator's `/settle` submits the presigned Payment. It goes from the buyer's account straight to the seller's. Sliver is never in the money path.
 7. **Independent ledger re-check.** Sliver doesn't take the facilitator's word. The transaction must be validated, `tesSUCCESS`, a Payment to `payTo` with `delivered_amount` exactly equal to the invoice, no partial-payment flag, and the right `InvoiceID` ([`payments/ledger_check.py`](apps/api/sliver_api/payments/ledger_check.py)).
 8. **Deliver.** 200 with the CSV, `PAYMENT-RESPONSE` (with the tx hash) and `X-Sliver-Receipt`. `GET /api/receipts/{id}` is the public receipt with the explorer link. Replaying the same payment re-delivers without settling twice, and a second transaction for a paid invoice gets 409.
+9. **Record Sliver's fee.** In the same commit that marks the sale delivered, Sliver records its platform fee (`SLIVER_PLATFORM_FEE_BPS`, default 10%) and the seller's net on the sale, in drops and USD cents, rounded down in the seller's favour. This is bookkeeping only. The buyer has already paid the **full price** to the seller on-chain, and Sliver's cut is settled with the seller off-chain for now. The receipt and `/purchases/{id}` show the split ([ADR 0005](docs/adr/0005-platform-fee-model.md)).
 
 Every step is recorded as a public activity event (no headers, blobs, invoice ids or keys), shown live at `/activity` and `/purchases/{id}` and streamed from `GET /api/activity/stream`. The full design is in [ADR 0004](docs/adr/0004-x402-payments-on-xrpl.md) and [docs/agents/transactions.md](docs/agents/transactions.md).
 
@@ -193,13 +195,22 @@ t54 contributed XRPL x402 support to the XRPL AI Starter Kit: the `x402-xrpl` Py
 
 The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a small client of our own, because the SDK's `uvicorn<0.31` pin conflicts with the `mcp` SDK. Its payments settle through the same t54 facilitator, and the official x402.org facilitator verifies them. What that taught us is in [docs/BUILDER_FEEDBACK.md](docs/BUILDER_FEEDBACK.md).
 
+## Business model
+
+Sellers list data for sale. On every sale the seller gets paid and Sliver takes a cut, the platform fee (10% by default).
+
+- **The buyer pays the full price to the seller on-chain**, with one standard x402 Payment. Sliver is never in the money path and never holds funds.
+- **Sliver's cut is recorded, then settled off-chain.** Each delivered sale stores the fee rate in force, Sliver's fee and the seller's net, so a later rate change never rewrites a past sale. Sliver invoices sellers for the fees owed. Sales from before the fee existed carry none.
+- **Sellers see it before and after.** The pricing panel shows "you receive $X after Sliver's 10%" at each price. `/sell/insights` shows gross, fee and net per sale and the fee owed.
+- **On-chain split: roadmap.** An atomic XRPL Batch payment (`BatchV1_1` is enabled on Testnet and Mainnet) could pay the seller and Sliver in one transaction, but standard x402 clients and facilitators sign and settle a single Payment. See [ADR 0005](docs/adr/0005-platform-fee-model.md).
+
 ## Pricing, publishing and seller insights
 
 - **Deterministic, explainable price.** For each sliver, [`valuation.py`](apps/api/sliver_api/valuation.py) computes *suggested = base × quality × uniqueness × demand × public availability × coverage*. The base is the median price of at least two published comparables in the same category, otherwise a fixed category base. Quality comes from the acceptance score. Overlap with catalog data that the duplicates stage measured lowers uniqueness. Matching unmet searches from the last 30 days raise demand (up to +50%). A free equivalent found by research lowers public availability. Row count sets coverage. Every factor comes back with its inputs and reason, the breakdown multiplies out exactly to the price, and a range is shown around it. The same inputs always give the same price.
 - **Claude explains, never prices.** Claude gets only the computed numbers and the factor reasons (no rows, provenance or search texts) and writes the explanation ([`seller/pricing.py`](apps/api/sliver_api/seller/pricing.py), versioned prompt `valuation_explanation.v1`). If its text contains a number that isn't in its input, the call fails, or there is no API key, a template is used instead. Publishing never calls Claude.
 - **The seller decides.** On the dataset page, "Price and publish" shows each sliver's suggestion, range and a "Why?" breakdown. The seller accepts or overrides each price and publishes all slivers together (`GET /api/seller/datasets/{id}/valuation`, `POST /api/seller/datasets/{id}/publish`). Each published sliver keeps a private snapshot of its valuation.
 - **Opt-in sample rows.** Nothing from the table is public by default. The seller may make up to five rows public, and a row with any privacy-flagged value is refused. A sliver shows only the selected rows that belong to it.
-- **Insights.** `/sell/insights` (`GET /api/seller/insights`) shows the seller's earnings, with each delivered purchase linked to its Testnet transaction, updating live from the activity stream. It also lists unmet buyer demand (searches that found nothing in the last 30 days) next to the seller's matching slivers.
+- **Insights.** `/sell/insights` (`GET /api/seller/insights`) shows the seller's earnings, with each delivered purchase linked to its Testnet transaction, updating live from the activity stream. Each sale and the totals show the gross the buyer paid, Sliver's fee, the seller's net, and the fee owed to Sliver. It also lists unmet buyer demand (searches that found nothing in the last 30 days) next to the seller's matching slivers.
 
 ## AI in the loop
 
@@ -222,7 +233,7 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 
 | Suite | Covers | Run |
 |---|---|---|
-| API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, valuation (determinism, each factor's direction, publish, sample-row refusals, the explanation's number guard, insights), auth, activity feed | `make test` |
+| API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, valuation (determinism, each factor's direction, publish, sample-row refusals, the explanation's number guard, insights), platform fee (rounding, snapshot surviving a rate change, insights totals, setting bounds, public receipt), auth, activity feed | `make test` |
 | Buyer packages (`packages/`) and `make demo` (`scripts/tests`) | Every `sliver_buy` refusal (asserting nothing was signed), signed-transaction fields, fit evaluation, MCP protocol end to end; the demo's README block writer, Testnet guards, ledger checks, demo table and buyer questions | `cd packages && uv sync --all-packages && uv run pytest` |
 | Lint | Ruff for Python, TypeScript typecheck for the web app | `make lint` |
 
@@ -256,7 +267,8 @@ Sliver is **the marketplace on the other side**: the place a buying agent like L
 
 ## Limitations
 
-- **Testnet only.** Testnet XRP has no value. The USD-to-XRP rate is a fixed, disclosed demo rate, not a market price. There is no RLUSD pricing, marketplace fee, payout or refund flow. A settlement that fails the ledger re-check is marked failed and refunded by hand.
+- **Testnet only.** Testnet XRP has no value. The USD-to-XRP rate is a fixed, disclosed demo rate, not a market price. There is no RLUSD pricing, payout or refund flow. A settlement that fails the ledger re-check is marked failed and refunded by hand.
+- **The platform fee is recorded, not collected.** The buyer pays the full price to the seller on-chain. Sliver's cut is a recorded claim, settled with the seller off-chain, and invoicing and settlement tracking aren't built yet. Until an on-chain split exists, Sliver relies on sellers to pay what is owed. Every fee points to its validated transaction, so the gross can be audited.
 - **Pricing is a demo calibration.** The category bases and factor weights in the valuation formula are not market research. Demand matching is term-based. Prices can't be changed after publishing.
 - **No hosted deployment.** Everything runs locally in Docker with development images.
 - **The facilitator is best effort with no SLA.** The real Testnet purchase is not part of CI. The x402.org facilitator can be configured with one setting, but only its `/verify` has been tested with our payments.

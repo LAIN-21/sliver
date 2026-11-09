@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
 from ..activity.log import sanitize_note
+from ..activity.public import public_fee
 from ..deps import DB
 from ..models import Payment, Resource, User
 from .service import Challenge, PurchaseError, PurchaseService
@@ -69,6 +70,8 @@ def receipt(payment_id: Annotated[str, Path(max_length=36)], db: DB) -> dict:
             "explorer_url": explorer_url(payment.tx_hash),
         },
         "settled_at": payment.settled_at.isoformat().replace("+00:00", "Z") if payment.settled_at else None,
+        # Recorded, not paid on-chain: the buyer paid the full amount to `pay_to` (ADR 0005).
+        "platform_fee": public_fee(payment),
     }
 
 

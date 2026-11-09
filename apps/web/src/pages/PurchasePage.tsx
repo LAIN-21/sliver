@@ -4,7 +4,16 @@ import { Link, useParams } from "react-router";
 import { eventTone, explain, STEPS, statusFor, stepIndex, stepLabel, type Tone } from "../activity";
 import { ApiError, getPurchase } from "../api";
 import { AccountLink, LedgerLink, LiveBadge, StatusPill, TxLink } from "../components/ActivityBits";
-import { formatAmount, formatClock, formatDateTime, formatLatency, formatNetwork, formatPrice, shortHash } from "../format";
+import {
+  formatAmount,
+  formatBps,
+  formatClock,
+  formatDateTime,
+  formatLatency,
+  formatNetwork,
+  formatPrice,
+  shortHash,
+} from "../format";
 import { useActivityStream } from "../hooks/useActivityStream";
 import type { ActivityEvent, PurchaseTimeline } from "../types";
 
@@ -146,6 +155,11 @@ export default function PurchasePage() {
           ) : null}
           {tx?.ledger_closed_at ? <Fact label="Ledger closed">{formatDateTime(tx.ledger_closed_at)}</Fact> : null}
           <Fact label="Network">{formatNetwork(purchase.network)} (no real funds)</Fact>
+          {purchase.platform_fee ? (
+            <Fact label={`Sliver's fee (${formatBps(purchase.platform_fee.bps)}, settled off-chain)`}>
+              {formatPrice(purchase.platform_fee.fee.usd_minor)}, seller nets {formatPrice(purchase.platform_fee.seller_net.usd_minor)}
+            </Fact>
+          ) : null}
         </dl>
         {purchase.status === "delivered" ? (
           <a
@@ -158,7 +172,8 @@ export default function PurchasePage() {
           </a>
         ) : null}
         <p className="mt-4 text-xs text-muted">
-          Sliver never signs or holds funds: the agent signs its own XRPL Payment and the seller receives it. Purchase{" "}
+          Sliver never signs or holds funds: the agent signs its own XRPL Payment and the seller receives all of it.
+          {purchase.platform_fee ? " Sliver's fee is recorded on the sale and settled with the seller off-chain." : ""} Purchase{" "}
           <span className="font-mono [overflow-wrap:anywhere]">{purchase.id}</span>
         </p>
       </aside>

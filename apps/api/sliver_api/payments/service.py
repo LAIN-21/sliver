@@ -27,6 +27,7 @@ from ..config import Settings
 from ..models import Payment, Resource, User, utcnow
 from ..storage import ObjectStore
 from .adapters import Facilitator, Ledger
+from .fees import record_fee
 from .ledger_check import settlement_problem
 from .x402 import build_requirements, decode_payment_signature, drops_for, payment_required, transaction_hash
 
@@ -243,6 +244,7 @@ class PurchaseService:
             payment.status, payment.settled_at = "delivered", utcnow()
             payment.payer = payment.payer or tx.get("Account")
             payment.ledger_index = result.get("ledger_index")
+            self.record_platform_fee(payment)
             db.commit()
             self.record(
                 "ledger_validated",
@@ -261,6 +263,13 @@ class PurchaseService:
             "delivered", payment, ledger_index=payment.ledger_index, detail="replay" if replay else None
         )
         return Delivery(data=data, payment=payment, settlement=settlement)
+
+    def record_platform_fee(self, payment: Payment) -> None:
+        """Snapshot Sliver's fee on the sale (ADR 0005). Bookkeeping only: it never blocks delivery."""
+        try:
+            record_fee(payment, self.settings.sliver_platform_fee_bps)
+        except Exception:
+            logger.exception("could not record the platform fee for payment %s", payment.id)
 
     def read_verified(self, resource: Resource, payment: Payment) -> bytes:
         try:

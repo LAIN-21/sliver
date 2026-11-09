@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Illustrative demo conversion: 400,000 drops (0.4 XRP) per USD, i.e. 1 XRP = 2.50 USD.
     drops_per_usd: int = Field(default=400_000, gt=0, le=100_000_000)
     payment_timeout_seconds: int = Field(default=600, ge=60, le=3600)
+    # Sliver's platform fee in basis points (ADR 0005): 1000 = 10%. Recorded on each delivered sale
+    # and settled with the seller off-chain; the buyer still pays the full price to the seller.
+    sliver_platform_fee_bps: int = Field(default=1_000, ge=0, le=5_000)
     payment_source_tag: int = 804681468
     worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
     # A running pipeline step whose worker vanished is reclaimed after this long.
