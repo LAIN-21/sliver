@@ -2,7 +2,7 @@
 
 > **Draft for team review.** Every point below comes from this repository: its code, ADRs and merged pull requests. Links point to the evidence. Points marked **Team to confirm** need facts only the team has. Edit, cut or add before submission.
 
-We built Sliver, a data marketplace where agents pay sellers per data slice with x402 v2 on XRPL Testnet. The server uses t54's `x402-xrpl` SDK and hosted facilitator from the XRPL AI Starter Kit. The buyer side is an MCP server with its own small x402 client. Before this, at SingHacks, the team built [Ledger402](https://github.com/LAIN-21/ripple-challenge), a buying agent that also paid over x402 on XRPL Testnet.
+We built Sliver, a data marketplace where agents pay per data slice with x402 v2 on XRPL Testnet. Buyers pay Sliver's platform wallet, and Sliver pays each seller their share every 15 days ([ADR 0005](adr/0005-platform-collection-and-payouts.md)). The server uses t54's `x402-xrpl` SDK and hosted facilitator from the XRPL AI Starter Kit. The buyer side is an MCP server with its own small x402 client. Before this, at SingHacks, the team built [Ledger402](https://github.com/LAIN-21/ripple-challenge), a buying agent that also paid over x402 on XRPL Testnet.
 
 ## What worked well
 
@@ -11,7 +11,7 @@ We built Sliver, a data marketplace where agents pay sellers per data slice with
 - **The `x402-xrpl` SDK's types and facilitator client saved real work.** `PaymentRequired`, `PaymentRequirements`, `PaymentPayload` and `FacilitatorClient` gave the server a correct x402 v2 wire format quickly ([`payments/x402.py`](../apps/api/sliver_api/payments/x402.py), [`payments/adapters.py`](../apps/api/sliver_api/payments/adapters.py)). The SDK's own buyer client (`XRPLPresignedPaymentPayer` with `invoice_binding="invoice_id"`) let `make smoke-testnet` prove the server against an independent implementation ([`payments/smoke.py`](../apps/api/sliver_api/payments/smoke.py)).
 - **x402 v2 is small enough to implement independently.** Our buyer client, [`sliver-x402`](../packages/sliver-x402/README.md), parses `PAYMENT-REQUIRED`, signs with `xrpl-py` and encodes `PAYMENT-SIGNATURE` and decodes `PAYMENT-RESPONSE` in under 400 lines of Python. Its payments passed both facilitators.
 - **The Testnet faucet made wallet setup one command.** `make wallets` and `sliver-mcp wallet init` create and fund Testnet wallets with no manual steps.
-- **Direct-to-seller settlement keeps the marketplace non-custodial.** Because the presigned Payment goes from buyer to `payTo`, the marketplace API never holds funds or buyer keys; the buyer's seed stays with the buyer's MCP. That removed a whole class of custody and compliance design from a hackathon build ([ADR 0004](adr/0004-x402-payments-on-xrpl.md)).
+- **The buyer signs, the server never does.** The presigned Payment goes from the buyer to `payTo`, so the marketplace API never holds buyer keys or signs anything; the buyer's seed stays with the buyer's MCP. Our first design paid each seller directly and kept Sliver free of custody too ([ADR 0004](adr/0004-x402-payments-on-xrpl.md)); taking a platform fee changed that (see [point 8](#8-one-payto-per-payment-means-a-marketplace-fee-needs-custody)).
 
 ## Friction and suggestions
 
@@ -39,7 +39,7 @@ Our SingHacks prototype, Ledger402, bound invoices and audit proofs with Memos. 
 
 ### 4. Per-request pricing needs more than the static middleware
 
-Every Sliver listing has its own price and its own seller address (`payTo`). The SDK's FastAPI path is built around a static `require_payment` configuration, so we built each challenge per listing from the SDK's types and call the facilitator client ourselves ([#23](https://github.com/LAIN-21/sliver/pull/23), [`payments/service.py`](../apps/api/sliver_api/payments/service.py)).
+Every Sliver listing has its own price and needs a fresh invoice id per challenge (and, before [ADR 0005](adr/0005-platform-collection-and-payouts.md), its own seller address as `payTo`). The SDK's FastAPI path is built around a static `require_payment` configuration, so we built each challenge per listing from the SDK's types and call the facilitator client ourselves ([#23](https://github.com/LAIN-21/sliver/pull/23), [`payments/service.py`](../apps/api/sliver_api/payments/service.py)).
 
 **Suggestion:** a middleware hook that resolves requirements per request (price, `payTo`, a fresh invoice id) would cover marketplaces and other multi-seller servers.
 
@@ -62,6 +62,16 @@ The ledger re-check has to read transaction fields from `tx_json` (rippled API v
 ### 7. Ledger close time is coarse
 
 The ledger close time is rounded (resolution up to 10 seconds), so on our live timeline it can read a few seconds *after* Sliver's own "validated" timestamp ([#28](https://github.com/LAIN-21/sliver/pull/28)). Not a bug, but surprising when you show payment steps to a human.
+
+### 8. One `payTo` per payment means a marketplace fee needs custody
+
+The `exact` scheme carries one presigned Payment to one `payTo`. When we added Sliver's platform fee, there was no way to split a single x402 payment between the seller and Sliver ([ADR 0005](adr/0005-platform-collection-and-payouts.md)):
+
+- A second payment from the buyer for the fee breaks off-the-shelf x402 clients and can half-succeed, so we rejected it.
+- XRPL can do the split atomically: `BatchV1_1` is enabled on Testnet and Mainnet (checked against the ledger's `Amendments` object on 9 November 2026). But the x402 `exact` XRPL scheme, the t54 facilitator and our own ledger re-check all assume a single Payment, so a Batch would need a new scheme or extension.
+- So buyers pay Sliver's platform wallet, Sliver records its fee and the seller's net per sale, and it pays sellers on a 15-day schedule. That is custody: Sliver holds other people's money between a sale and the payout. On Testnet it costs nothing, but on Mainnet it brings money-transmission, KYC/AML and safeguarding work, and payouts are not automated yet.
+
+**Suggestion:** a split-payment option for XRPL x402, for example an `exact` variant whose requirements list several payees and amounts and whose payload is an XRPL Batch of those Payments (all-or-nothing), with facilitator `/verify` and `/settle` support. Marketplaces, agent tool hubs and anyone taking a platform fee could then stay non-custodial.
 
 ## Team to confirm
 

@@ -24,7 +24,7 @@ The server tells agents to evaluate before buying, to say so and look elsewhere 
 
 ### Custom slices
 
-When the best pre-cut sliver covers much more than the need (the requested time range is at most half of what it covers), `sliver_evaluate` returns `custom_slice`: the arguments for `sliver_quote_slice` on a full-dataset listing that offers custom slices (`custom_slices.available` in its listing), keeping the sliver's category (for example `{"lane": "SGSIN-CNSHA"}`) when the full dataset has that column. Quoting is free and never spends: Sliver cuts the rows, prices them per row from the full dataset's published price (never above it) and answers with an unlisted sliver id. The quote has a one-sentence `summary` for the human ("$0.24 (0.096 XRP) for 8 rows × 4 columns …"), the price in USD and XRP, rows, columns, coverage, the filter, the parent listing and seller, the SHA-256 and its validity (the price is fixed while the parent stays published; each purchase gets a fresh invoice). The agent tells its human the summary and calls `sliver_buy` with the quote's id only after the human agrees, under the same budget and caps. Like any sliver, the buyer pays through Sliver, and the seller is credited (net of Sliver's fee) and paid out on the 15-day schedule. Sliver never decides to spend. A refusal says what can be filtered, or points to an existing sliver with exactly those rows.
+When the best pre-cut sliver covers much more than the need (the requested time range is at most half of what it covers), `sliver_evaluate` returns `custom_slice`: the arguments for `sliver_quote_slice` on a full-dataset listing that offers custom slices (`custom_slices.available` in its listing), preferring the table the sliver was cut from (same columns and seller). It keeps the sliver's category (for example `{"lane": "SGSIN-CNSHA"}`) when the full dataset has that column, unless slivers for other values of that column fit the need just as well: a need such as "port logistics operating costs" names no single cost category, so the slice keeps them all. Quoting is free and never spends: Sliver cuts the rows, prices them per row from the full dataset's published price (never above it) and answers with an unlisted sliver id. The quote has a one-sentence `summary` for the human ("$0.24 (0.096 XRP) for 8 rows × 4 columns …"), the price in USD and XRP, rows, columns, coverage, the filter, the parent listing and seller, the SHA-256 and its validity (the price is fixed while the parent stays published; each purchase gets a fresh invoice). The agent tells its human the summary and calls `sliver_buy` with the quote's id only after the human agrees, under the same budget and caps. Like any sliver, the buyer pays through Sliver, and the seller is credited (net of Sliver's fee) and paid out on the 15-day schedule. Sliver never decides to spend. A refusal says what can be filtered, or points to an existing sliver with exactly those rows.
 
 ## Spending policy
 
@@ -74,6 +74,16 @@ Claude Desktop (`claude_desktop_config.json`) and Cursor (`~/.cursor/mcp.json` o
 ```
 
 If the app cannot find `uvx`, use its absolute path (`which uvx`).
+
+### Updating
+
+`uvx` caches the install from git, so a running agent keeps the version it first fetched. To pick up the latest `main`, refresh the cache once and restart the agent app (quit Claude Desktop fully and reopen it):
+
+```bash
+uvx --refresh --from "git+https://github.com/LAIN-21/sliver#subdirectory=packages/sliver-mcp" sliver-mcp wallet show
+```
+
+The server should then list seven tools, including `sliver_quote_slice`.
 
 Then ask your agent something like: "Find weekly container spot rates from Singapore to Shanghai since September. Budget $5."
 

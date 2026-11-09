@@ -1,5 +1,6 @@
 """Pure parts of `make demo`: the README block, the Testnet guards, the ledger facts, the demo
-dataset and the two buyer questions. Run with the buyer packages: `cd packages && uv run pytest`."""
+dataset and the three buyer questions, including the custom slice of the seeded port-cost table.
+Run with the buyer packages: `cd packages && uv run pytest`."""
 
 import csv
 import io
@@ -19,7 +20,7 @@ from sliver_mcp.evaluate import evaluate  # noqa: E402
 
 HASH = "A" * 64
 BUYER = "rBuyerAddressxxxxxxxxxxxxxxxxxxxx"
-SELLER = "rSellerAddressxxxxxxxxxxxxxxxxxxx"
+PLATFORM = "rPlatformAddressxxxxxxxxxxxxxxxxx"
 README = f"""# Sliver
 
 Intro.
@@ -43,7 +44,7 @@ def validated_tx(**overrides) -> dict:
         "ledger_index": 12_345_678,
         "TransactionType": "Payment",
         "Account": BUYER,
-        "Destination": SELLER,
+        "Destination": PLATFORM,
         "InvoiceID": "B" * 64,
         "SourceTag": 804681468,
         "meta": {"TransactionResult": "tesSUCCESS", "delivered_amount": "700000"},
@@ -52,16 +53,29 @@ def validated_tx(**overrides) -> dict:
     return result
 
 
+CREDIT = {
+    "gross_minor": 175,
+    "fee_bps": 1000,
+    "fee_minor": 17,
+    "net_minor": 158,
+    "payout": "owed",
+    "next_payout_date": "2026-11-16",
+}
+
+
 def run_record(title: str = "Singapore anchorage waiting times: October 2026") -> dict:
     return {
         "run_id": "20261109T120000Z",
         "finished_at": "2026-11-09 12:05 UTC",
         "rpc_host": "s.altnet.rippletest.net",
+        "platform_address": PLATFORM,
         "transactions": [
             {
                 **demo.ledger_facts(validated_tx(), HASH),
                 "price_minor": 175,
                 "title": title,
+                "seller": "Strait Line Data (demo seller)",
+                "credit": CREDIT,
             }
         ],
         "dataset_title": "Singapore anchorage waiting times, daily (demo run 20261109T120000Z)",
@@ -78,7 +92,23 @@ def run_record(title: str = "Singapore anchorage waiting times: October 2026") -
                 "title": title,
                 "price_minor": 175,
             },
+            {
+                "ask": "Port costs? Budget $5.",
+                "recommendation": "buy",
+                "tx_hash": "D" * 64,
+                "title": "Singapore port-business operating costs (month 2026-08-01 to 2026-10-31)",
+                "price_minor": 125,
+                "quote": {
+                    "rows": 69,
+                    "column_count": 7,
+                    "parent_title": "Singapore port-business operating costs",
+                    "covers": "month 2026-08 to 2026-10",
+                    "price_minor": 125,
+                    "amount_drops": 500_000,
+                },
+            },
         ],
+        "balance": {"owed_minor": 270, "sales_owed": 2, "next_payout_date": "2026-11-16"},
     }
 
 
@@ -123,16 +153,48 @@ def test_render_block_records_ledger_facts_and_links():
     assert "| 12345678 |" in block
     assert "0.7 XRP ($1.75)" in block
     assert f"[`{BUYER}`](https://testnet.xrpl.org/accounts/{BUYER})" in block
-    assert f"[`{SELLER}`](https://testnet.xrpl.org/accounts/{SELLER})" in block
+    assert f"[`{PLATFORM}`](https://testnet.xrpl.org/accounts/{PLATFORM})" in block
+    assert "to Sliver's platform wallet" in block and "straight to the seller" not in block
     assert "`look_elsewhere`: nothing was signed or spent." in block
     assert "run `20261109T120000Z`" in block
     assert demo.START not in block and demo.END not in block
 
 
+def test_render_block_shows_how_each_sale_is_credited_to_the_seller():
+    block = demo.render_block(run_record())
+    row = next(line for line in block.splitlines() if line.startswith("| [`"))
+    assert row.endswith(
+        "| Strait Line Data (demo seller): $1.75 − $0.17 Sliver fee (10%) = $1.58 net, "
+        "owed at the 2026-11-16 payout |"
+    )
+    assert "$2.70 owed by Sliver across 2 sales, with the next payout on 2026-11-16" in block
+    assert "paid out on the 1st and 16th of each month" in block
+
+
+def test_render_block_tells_the_custom_slice_story():
+    block = demo.render_block(run_record())
+    line = next(line for line in block.splitlines() if line.startswith("3. "))
+    assert "`sliver_quote_slice` quoted 69 rows × 7 columns of “Singapore port-business" in line
+    assert "(month 2026-08 to 2026-10) for $1.25 (0.5 XRP)" in line
+    assert "The scripted human said yes, and the buyer bought it for $1.25: paid to Sliver's" in line
+    plain = next(line for line in block.splitlines() if line.startswith("2. "))
+    assert plain.endswith(
+        "→ `buy` “Singapore anchorage waiting times: October 2026” for $1.75: paid to Sliver's platform "
+        "wallet, delivered and SHA-256-verified."
+    )
+    assert "asked 3 questions" in block
+
+
+def test_credit_text():
+    assert demo.credit_text({**CREDIT, "fee_bps": 250}) == (
+        "$1.75 − $0.17 Sliver fee (2.5%) = $1.58 net, owed at the 2026-11-16 payout"
+    )
+
+
 def test_render_block_escapes_listing_text():
     block = demo.render_block(run_record(title="Prices | <script>x</script> [link](http://evil)"))
     row = next(line for line in block.splitlines() if line.startswith("| [`"))
-    assert row.count(" | ") == 4  # the title's pipe cannot add a column
+    assert row.count(" | ") == 5  # the title's pipe cannot add a column
     assert "<script>" not in block and "[link](" not in block
     assert r"\<script\>" in block and r"\[link\](http://evil)" in block
 
@@ -201,7 +263,7 @@ def test_ledger_facts_from_api_v1_and_v2_shapes():
         "hash": HASH,
         "ledger_index": 12_345_678,
         "account": BUYER,
-        "destination": SELLER,
+        "destination": PLATFORM,
         "delivered_drops": 700_000,
         "invoice_id": "B" * 64,
         "source_tag": 804681468,
@@ -386,3 +448,65 @@ def test_buy_question_skips_what_the_budget_does_not_cover(generator):
     _, hit = demo.questions(TODAY)
     report = ask(hit, [month_listing(generator, "run-1", "2026-10", price_minor=650)])
     assert report["recommendation"] == "skip"
+
+
+# --- the custom slice of the seeded port-cost table -----------------------------------------
+
+
+@pytest.fixture(scope="module")
+def port_costs() -> list[dict]:
+    """The seeded operating-cost table as the catalog lists it (#43): the full table, which offers
+    custom slices, and one sliver per cost category, with the same metadata."""
+    path = ROOT / "examples" / "datasets" / "sg-port-business-operating-costs.csv"
+    header, *rows = table(path.read_bytes())
+    types = {"month": "month", "sgd_amount": "decimal", "usd_amount": "decimal"}
+    base = {
+        "title": "Singapore port-business operating costs",
+        "description": "Synthetic monthly cost benchmarks for running a port logistics company in Singapore.",
+        "category": "logistics-costs",
+        "tags": ["singapore", "port", "logistics", "operating cost", "startup cost", "synthetic"],
+        "columns": [{"name": name, "type": types.get(name, "text")} for name in header],
+        "coverage": {"time": {"column": "month", "start": rows[0][0], "end": rows[-1][0]}},
+    }
+    full = {
+        **base,
+        "id": "costs-full",
+        "row_count": len(rows),
+        "price": {"amount_minor": 1000, "currency": "USD"},
+        "custom_slices": {"available": True},
+    }
+    categories = sorted({row[1] for row in rows})
+    slivers = [
+        {
+            **base,
+            "id": f"costs-{index}",
+            "title": f"{base['title']}: {category}",
+            "row_count": sum(row[1] == category for row in rows),
+            "coverage": {**base["coverage"], "slice": {"column": "cost_category", "value": category}},
+            "price": {"amount_minor": 300, "currency": "USD"},
+            "custom_slices": {"available": False},
+        }
+        for index, category in enumerate(categories)
+    ]
+    return [full, *slivers]
+
+
+def test_port_costs_question_suggests_a_custom_slice_of_every_category(port_costs):
+    question = demo.PORT_COSTS
+    report = ask(question, port_costs)
+    assert report["recommendation"] == question.expect == "buy"
+    suggestion = report["custom_slice"]
+    assert suggestion["resource_id"] == "costs-full"
+    assert (suggestion["time_start"], suggestion["time_end"]) == ("2026-08", "2026-10")
+    # Six category slivers fit "operating costs" equally well: the slice keeps all six.
+    assert suggestion["where"] is None
+
+
+def test_port_costs_slice_is_three_months_of_the_seeded_table(port_costs):
+    path = ROOT / "examples" / "datasets" / "sg-port-business-operating-costs.csv"
+    _, *rows = table(path.read_bytes())
+    picked = [row for row in rows if demo.PORT_COSTS.time_start <= row[0] <= demo.PORT_COSTS.time_end]
+    assert len(picked) == 69 and len({row[1] for row in picked}) == 6
+    # Priced per row from the $10.00 full table (valuation.custom_slice_price): well under $5.
+    assert round(1000 * len(picked) / len(rows)) == 125 < demo.BUDGET_USD * 100
+    assert demo.PORT_COSTS.reason and len(demo.PORT_COSTS.reason) <= 200
