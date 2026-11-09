@@ -114,7 +114,11 @@ class PipelineSettings(BaseSettings):
 
     anthropic_api_key: str = Field(default="", repr=False)
     sliver_ai_model: str = "claude-opus-5-5"
+    # Total time for one Claude call, retries and web-search continuations included. It is capped
+    # below the worker's step timeout (see ai.STEP_SHARE).
     sliver_ai_timeout_seconds: float = Field(default=120.0, gt=0, le=600)
+    # The same variable the worker reads (Settings.pipeline_step_timeout_seconds).
+    pipeline_step_timeout_seconds: int = Field(default=300, ge=30, le=3600)
     # Ask Claude, with web search, whether equivalent data is freely available. Off by default.
     sliver_ai_research: bool = False
     # Datasets without blocking findings are accepted automatically at or above this quality score.

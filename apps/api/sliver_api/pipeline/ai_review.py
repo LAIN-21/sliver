@@ -9,7 +9,7 @@ import logging
 from .. import ai
 from .context import StageContext
 from .duplicates import sample
-from .leakguard import TEMPORAL, LeakGuard, flagged_columns, is_categorical, number_forms
+from .leakguard import TEMPORAL, LeakGuard, flagged_columns, is_categorical, number_forms, shareable_coverage
 from .privacy import scan_column
 from .profile import profile_column
 from .table import StageResult, Table, finding
@@ -17,6 +17,8 @@ from .table import StageResult, Table, finding
 logger = logging.getLogger(__name__)
 
 REDACTED = "[redacted]"
+# Profile entries that hold raw cell values; dropped for columns the privacy scan flagged.
+VALUE_STATS = ("min", "max", "mean")
 # Value slices the rule picks on its own stay few; Claude may propose up to MAX_CATEGORIES.
 RULE_MAX_SLICES = 24
 MAX_MONTHS = 36
@@ -29,13 +31,27 @@ def redact(row: list[str], header: list[str], flagged: set[str]) -> list[str]:
     ]
 
 
+def model_profile(profile: list[dict], flagged: set[str]) -> list[dict]:
+    """The profile without the value statistics of flagged columns (a phone number as `max`)."""
+    return [
+        {key: value for key, value in column.items() if key not in VALUE_STATS}
+        if column["name"] in flagged
+        else column
+        for column in profile
+    ]
+
+
 def review_payload(table: Table, profile: list[dict], time_coverage: dict | None, flagged: set[str]) -> dict:
-    """Everything the model sees: schema, profile and at most 20 redacted sample rows."""
+    """Everything the model sees: schema, profile and at most 20 redacted sample rows.
+
+    Nothing from a flagged column leaves as a raw value: its cells, its value statistics and a
+    time coverage built from it are all withheld.
+    """
     return {
         "header": table.header,
         "row_count": len(table.rows),
-        "columns": profile,
-        "time_coverage": time_coverage,
+        "columns": model_profile(profile, flagged),
+        "time_coverage": shareable_coverage(time_coverage, flagged),
         "redacted_columns": sorted(flagged),
         "sample_rows": [redact(row, table.header, flagged) for row in sample(table.rows, ai.MAX_SAMPLE_ROWS)],
     }
@@ -144,8 +160,9 @@ def run(context: StageContext) -> StageResult:
     profile = profile_details.get("columns") or [
         profile_column(name, table.column(index)) for index, name in enumerate(table.header)
     ]
-    time_coverage = profile_details.get("time_coverage")
     flagged = flagged_columns(context.findings("privacy"))
+    # A coverage built from a personal date column (a birth date) never reaches public text either.
+    time_coverage = shareable_coverage(profile_details.get("time_coverage"), flagged)
 
     findings: list[dict] = []
     details: dict = {"prompt": ai.REVIEW_PROMPT, "engine": "fallback"}
@@ -156,10 +173,14 @@ def run(context: StageContext) -> StageResult:
     else:
         payload = review_payload(table, profile, time_coverage, flagged)
         try:
-            answer, cached = ai.ask_cached(
-                context.store, engine, ai.load_prompt(ai.REVIEW_PROMPT), payload, dataset.sha256
+            proposal, answer, cached = ai.ask_cached(
+                context.store,
+                engine,
+                ai.load_prompt(ai.REVIEW_PROMPT),
+                payload,
+                dataset.sha256,
+                validate=lambda answer: ai.validate_review(answer.output),
             )
-            proposal = ai.validate_review(answer.output)
             details.update(engine="claude", model=answer.model, cached=cached, request_id=answer.request_id)
         except ai.Unavailable as error:
             logger.warning("claude review unavailable for dataset %s: %s", dataset.id, error)

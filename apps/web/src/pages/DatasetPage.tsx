@@ -257,7 +257,12 @@ function ReviewForm({ datasetId, onDecided }: { datasetId: string; onDecided: (d
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-    const decision = submitter?.value === "reject" ? "reject" : "approve";
+    // Only a click on one of the two buttons records a decision; never assume an approval.
+    const decision = submitter?.value;
+    if (decision !== "approve" && decision !== "reject") {
+      setError("Choose Approve or Reject.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {

@@ -10,7 +10,7 @@ import hashlib
 from .. import slicing
 from ..models import Resource
 from .context import StageContext
-from .leakguard import LeakGuard, flagged_columns, number_forms, public_texts
+from .leakguard import LeakGuard, flagged_columns, number_forms, public_texts, shareable_coverage
 from .profile import profile_column
 from .table import StageResult, count, finding
 
@@ -43,11 +43,13 @@ def run(context: StageContext) -> StageResult:
     profile = profile_details.get("columns") or [
         profile_column(name, table.column(index)) for index, name in enumerate(table.header)
     ]
-    time_column = (profile_details.get("time_coverage") or {}).get("column")
+    flagged = flagged_columns(context.findings("privacy"))
+    # Public coverage never comes from a personal date column (a birth date).
+    time_column = (shareable_coverage(profile_details.get("time_coverage"), flagged) or {}).get("column")
     guard = LeakGuard(
         table,
         profile,
-        flagged_columns(context.findings("privacy")),
+        flagged,
         allowed={
             *number_forms(len(table.rows), len(table.header), *(len(piece.rows) for piece in pieces)),
             *(piece.label for piece in pieces),

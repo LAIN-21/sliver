@@ -343,6 +343,35 @@ def test_only_schema_profile_and_twenty_redacted_rows_reach_the_model(seller, se
     assert "S1234560D" not in caplog.text and "2026-07-01,SGSIN" not in caplog.text
 
 
+def test_flagged_columns_send_no_value_stats_or_coverage_to_the_model(
+    seller, sessions, store, fake, monkeypatch
+):
+    monkeypatch.setenv("SLIVER_AI_RESEARCH", "true")
+    research = {"freely_available": "no", "summary": "Nothing comparable found.", "sources": []}
+    engine = fake(FakeEngine(review=proposal(), research=research))
+    # date_of_birth is the first date column, so the stored profile takes its coverage from it.
+    rows = "".join(
+        f"19{61 + n % 30}-0{1 + n % 9}-1{n % 10},2026-07-{1 + n:02d},{LANES[n % 3]},{51234 + 7 * n}\n"
+        for n in range(30)
+    )
+    body = ("date_of_birth,week_start,lane,salary\n" + rows).encode()
+    dataset_id = upload(seller, body=body, title="Rates with staff").json()["id"]
+    run(sessions, store)
+    (_, review_payload, _), (_, research_payload, _) = engine.calls
+    assert review_payload["redacted_columns"] == ["date_of_birth", "salary"]
+    columns = {column["name"]: column for column in review_payload["columns"]}
+    for name in ("date_of_birth", "salary"):
+        assert not {"min", "max", "mean"} & set(columns[name]) and columns[name]["distinct"] == 30
+    assert columns["week_start"]["min"] == "2026-07-01"  # unflagged columns keep their stats
+    assert review_payload["time_coverage"] is None and research_payload["time_coverage"] is None
+    sent = json.dumps([review_payload, research_payload])
+    assert "1961-01-10" not in sent and "51234" not in sent
+    body = detail(seller, dataset_id)
+    # The stored profile keeps its coverage; nothing public is built from the birth dates.
+    assert step(body, "profile")["details"]["time_coverage"]["column"] == "date_of_birth"
+    assert body["resources"] and all("time" not in resource["coverage"] for resource in body["resources"])
+
+
 def test_results_are_cached_by_dataset_sha256(make_client, sessions, store, fake):
     engine = fake(FakeEngine(review=proposal()))
     for email in ("one@example.test", "two@example.test"):
@@ -379,6 +408,43 @@ def test_invalid_model_output_falls_back(seller, sessions, store, fake):
     dataset_id = upload(seller, body=CLEAN.encode(), title="Spot rates").json()["id"]
     run(sessions, store)
     assert step(detail(seller, dataset_id), "ai_review")["details"]["fallback_reason"] == "invalid_output"
+
+
+def test_rejected_answers_are_never_cached(make_client, sessions, store, fake):
+    engine = fake(FakeEngine(review=proposal(title="  ")))  # schema-valid, rejected by validation
+    key = ai.cache_key(
+        ai.load_prompt(ai.REVIEW_PROMPT), "claude-test", hashlib.sha256(CLEAN.encode()).hexdigest()
+    )
+    for email, output in (("one@example.test", None), ("two@example.test", proposal())):
+        if output:
+            engine.outputs[ai.REVIEW_PROMPT] = output
+        make_user(sessions, email)
+        client = make_client()
+        sign_in(client, email)
+        dataset_id = upload(client, body=CLEAN.encode(), title="Spot rates").json()["id"]
+        run(sessions, store)
+        if output is None:
+            review = step(detail(client, dataset_id), "ai_review")["details"]
+            assert review["fallback_reason"] == "invalid_output"
+            assert key not in store.objects
+    assert len(engine.calls) == 2
+    review = step(detail(client, dataset_id), "ai_review")["details"]
+    assert review["engine"] == "claude" and review["cached"] is False
+    assert key in store.objects
+
+
+def test_an_invalid_cached_answer_is_ignored(seller, sessions, store, fake):
+    engine = fake(FakeEngine(review=proposal()))
+    key = ai.cache_key(
+        ai.load_prompt(ai.REVIEW_PROMPT), "claude-test", hashlib.sha256(CLEAN.encode()).hexdigest()
+    )
+    stale = {"output": proposal(title=""), "model": "claude-test", "request_id": None, "search_urls": []}
+    store.put(key, json.dumps(stale).encode(), content_type="application/json")
+    dataset_id = upload(seller, body=CLEAN.encode(), title="Spot rates").json()["id"]
+    run(sessions, store)
+    review = step(detail(seller, dataset_id), "ai_review")["details"]
+    assert len(engine.calls) == 1
+    assert review["engine"] == "claude" and review["cached"] is False
 
 
 # --- research -----------------------------------------------------------------------------
@@ -623,3 +689,26 @@ def test_claude_without_a_usable_tool_call_is_unavailable(reply, reason):
     claude, _ = claude_with([reply])
     with pytest.raises(ai.Unavailable, match=reason):
         claude.ask(ai.load_prompt(ai.REVIEW_PROMPT), {})
+
+
+def test_claude_bounds_each_attempt_by_the_step_timeout():
+    settings = PipelineSettings(
+        anthropic_api_key="test-key", sliver_ai_timeout_seconds=120, pipeline_step_timeout_seconds=30
+    )
+    claude = ai.Claude(settings)
+    stub = StubMessages([response("tool_use", tool_use("submit_review", proposal()))])
+    claude.client = SimpleNamespace(beta=SimpleNamespace(messages=stub))
+    claude.ask(ai.load_prompt(ai.REVIEW_PROMPT), {})
+    # 60% of a 30 s step, shared by the first attempt and its two retries.
+    assert claude.budget == 18
+    assert 0 < stub.requests[0]["timeout"] <= 18 / (ai.MAX_RETRIES + 1)
+
+
+def test_claude_stops_continuing_at_the_deadline(monkeypatch):
+    clock = iter([0.0, 0.0, 1000.0])
+    monkeypatch.setattr(ai.time, "monotonic", lambda: next(clock))
+    search = SimpleNamespace(type="web_search_tool_result", content=[])
+    claude, stub = claude_with([response("pause_turn", search), response("pause_turn", search)])
+    with pytest.raises(ai.Unavailable, match="deadline"):
+        claude.ask(ai.load_prompt(ai.RESEARCH_PROMPT), {}, web_search=True)
+    assert len(stub.requests) == 1

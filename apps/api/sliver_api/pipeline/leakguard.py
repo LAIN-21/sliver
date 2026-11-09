@@ -24,6 +24,11 @@ def flagged_columns(privacy_findings: list[dict]) -> set[str]:
     return {item["column"] for item in privacy_findings if item.get("column")}
 
 
+def shareable_coverage(time_coverage: dict | None, flagged: set[str]) -> dict | None:
+    """Time coverage that may leave Sliver (to the model or public text): none when its column is flagged."""
+    return None if time_coverage and time_coverage.get("column") in flagged else time_coverage
+
+
 def is_categorical(column: dict, row_count: int, flagged: set[str]) -> bool:
     """`column` is a profile entry (see pipeline/profile.py)."""
     if column["name"] in flagged or column["type"] in (*TEMPORAL, "decimal"):

@@ -1,14 +1,17 @@
 """Claude review of inspected seller datasets, with a deterministic offline fallback.
 
 What reaches the model: the column schema, the column profile and at most 20 sample rows, with
-every cell the privacy scan flagged replaced by "[redacted]" first. Research sends only the
-public listing text, the schema and the time coverage. Nothing in this module logs payloads,
-prompts or model output; log lines carry the task, the dataset id and error class names only.
+every cell the privacy scan flagged replaced by "[redacted]" first. Flagged columns also lose
+their value statistics (min, max, mean), and a time coverage built from a flagged column is not
+sent. Research sends only the public listing text, the schema and the time coverage. Nothing in
+this module logs payloads, prompts or model output; log lines carry the task, the dataset id and
+error class names only.
 
 Prompts are versioned files in `prompts/` (`<name>.md` is the system prompt, `<name>.schema.json`
 the tool Claude must call). Output comes back as the input of that strict tool, is validated
-here, and is cached in private object storage by prompt version, model and dataset SHA-256, so
-retries and re-uploads of the same bytes do not call the API again.
+here, and only then cached in private object storage by prompt version, model and dataset
+SHA-256, so retries and re-uploads of the same bytes do not call the API again. One call, with
+its retries and web-search continuations, ends well inside the worker's step timeout.
 
 Without ANTHROPIC_API_KEY, `engine()` returns None and the stages use `fallback_review`.
 """
@@ -16,6 +19,8 @@ Without ANTHROPIC_API_KEY, `engine()` returns None and the stages use `fallback_
 import json
 import logging
 import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -37,6 +42,11 @@ MAX_SAMPLE_ROWS = 20
 MAX_TOKENS = 16_000
 # A web-search turn may pause; continue it at most this many times.
 MAX_CONTINUATIONS = 4
+# The SDK retries connection errors, timeouts, 429 and 5xx this many times per request.
+MAX_RETRIES = 2
+# One ask, with its retries and continuations, uses at most this share of the step timeout, so a
+# slow call never outlives its step and gets paid for again by the worker that reclaims it.
+STEP_SHARE = 0.6
 # Models that accept server-side refusal fallbacks (beta). Other models get a plain request.
 FALLBACK_MODELS = frozenset({"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"})
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
@@ -88,10 +98,10 @@ class Engine(Protocol):
 class Claude:
     def __init__(self, settings: PipelineSettings):
         self.model = settings.sliver_ai_model
+        step_share = settings.pipeline_step_timeout_seconds * STEP_SHARE
+        self.budget = min(settings.sliver_ai_timeout_seconds, step_share)
         # The key is passed explicitly: an unset key means the fallback, never another credential.
-        self.client = anthropic.Anthropic(
-            api_key=settings.anthropic_api_key, timeout=settings.sliver_ai_timeout_seconds, max_retries=2
-        )
+        self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key, max_retries=MAX_RETRIES)
 
     def ask(self, prompt: Prompt, payload: dict, web_search: bool = False) -> Answer:
         messages: list[dict] = [
@@ -110,9 +120,14 @@ class Claude:
         if self.model in FALLBACK_MODELS:
             request.update(betas=[FALLBACK_BETA], fallbacks="default")
         urls: list[str] = []
+        deadline = time.monotonic() + self.budget
         try:
             for _ in range(MAX_CONTINUATIONS + 1):
-                response = self.client.beta.messages.create(**request)
+                remaining = deadline - time.monotonic()
+                if remaining < 1:
+                    raise Unavailable("deadline")
+                # Timed-out attempts are retried, so each attempt gets an equal share of what is left.
+                response = self.client.beta.messages.create(**request, timeout=remaining / (MAX_RETRIES + 1))
                 urls.extend(search_urls(response.content))
                 if response.stop_reason != "pause_turn":
                     break
@@ -146,18 +161,33 @@ def cache_key(prompt: Prompt, model: str, sha256: str) -> str:
 
 
 def ask_cached(
-    store: ObjectStore, ai: Engine, prompt: Prompt, payload: dict, sha256: str, web_search: bool = False
-) -> tuple[Answer, bool]:
-    """Returns the answer and whether it came from the cache."""
+    store: ObjectStore,
+    ai: Engine,
+    prompt: Prompt,
+    payload: dict,
+    sha256: str,
+    validate: Callable[[Answer], dict],
+    web_search: bool = False,
+) -> tuple[dict, Answer, bool]:
+    """Returns the validated output, the answer and whether it came from the cache.
+
+    Cache entries are immutable, so an answer is cached only after `validate` accepts it; a
+    rejected answer raises `Unavailable` and the next run asks again.
+    """
     key = cache_key(prompt, ai.model, sha256)
     try:
         record = json.loads(store.get(key))
-        return Answer(
-            record["output"], record["model"], record.get("request_id"), record["search_urls"]
-        ), True
-    except Exception:  # noqa: S110 - a missing or unreadable cache entry is a miss
-        pass
+        cached = Answer(record["output"], record["model"], record.get("request_id"), record["search_urls"])
+    except Exception:
+        cached = None  # a missing or unreadable cache entry is a miss
+    if cached is not None:
+        try:
+            return validate(cached), cached, True
+        except Unavailable:
+            # Written before answers were validated first; it can never be replaced, so ask again.
+            logger.warning("ignoring an invalid cached %s result for %s", prompt.name, sha256[:12])
     answer = ai.ask(prompt, payload, web_search=web_search)
+    output = validate(answer)
     record = {
         "output": answer.output,
         "model": answer.model,
@@ -170,7 +200,7 @@ def ask_cached(
         pass
     except Exception:
         logger.warning("could not cache the %s result for %s", prompt.name, sha256[:12])
-    return answer, False
+    return output, answer, False
 
 
 # --- output validation --------------------------------------------------------------------

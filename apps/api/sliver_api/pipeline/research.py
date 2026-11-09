@@ -7,6 +7,7 @@ import logging
 
 from .. import ai
 from .context import StageContext
+from .leakguard import flagged_columns, shareable_coverage
 from .table import StageResult, finding
 
 logger = logging.getLogger(__name__)
@@ -39,19 +40,21 @@ def run(context: StageContext) -> StageResult:
     payload = {
         "listing": listing,
         "columns": [{"name": column["name"], "type": column["type"]} for column in context.dataset.columns],
-        "time_coverage": context.details("profile").get("time_coverage"),
+        "time_coverage": shareable_coverage(
+            context.details("profile").get("time_coverage"), flagged_columns(context.findings("privacy"))
+        ),
     }
     details: dict = {"enabled": True, "prompt": ai.RESEARCH_PROMPT}
     try:
-        answer, cached = ai.ask_cached(
+        research, answer, cached = ai.ask_cached(
             context.store,
             engine,
             ai.load_prompt(ai.RESEARCH_PROMPT),
             payload,
             context.dataset.sha256,
+            validate=lambda answer: ai.validate_research(answer.output, answer.search_urls),
             web_search=True,
         )
-        research = ai.validate_research(answer.output, answer.search_urls)
     except ai.Unavailable as error:
         logger.warning("claude research unavailable for dataset %s: %s", context.dataset.id, error)
         return StageResult(
