@@ -4,8 +4,9 @@ import { Link, useParams } from "react-router";
 import { ApiError, getDataset, reviewDataset } from "../api";
 import { ErrorMessage, Field, INPUT, PRIMARY_BUTTON } from "../components/Form";
 import { DatasetPill, inProgress, SeverityBadge, StepPill } from "../components/PipelineStatus";
+import PricingPanel from "../components/PricingPanel";
 import RequireAccount from "../components/RequireAccount";
-import { formatBytes, formatCategory, formatRange } from "../format";
+import { formatBytes, formatCategory, formatPrice, formatRange } from "../format";
 import type {
   Account,
   AiReviewDetails,
@@ -94,6 +95,9 @@ function DatasetView({ id, account }: { id: string; account: Account }) {
         account={account}
         onDecided={(updated) => setState({ kind: "ready", dataset: updated })}
       />
+      {account.role === "seller" && (dataset.status === "accepted" || dataset.status === "published") ? (
+        <PricingPanel dataset={dataset} onPublished={(updated) => setState({ kind: "ready", dataset: updated })} />
+      ) : null}
       <ProposedListing step={dataset.steps.find((step) => step.stage === "ai_review")} />
       {dataset.resources.length ? <Slivers resources={dataset.resources} /> : null}
 
@@ -233,7 +237,10 @@ function Decision({
     return (
       <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
         <h2 className="font-semibold">Accepted automatically</h2>
-        <p className="mt-1 text-sm">No blocking findings and the quality score cleared the threshold. The slivers are ready for pricing.</p>
+        <p className="mt-1 text-sm">
+          No blocking findings and the quality score cleared the threshold. The slivers are ready for pricing
+          {account.role === "seller" ? " below" : " by the seller"}.
+        </p>
       </section>
     );
   }
@@ -345,7 +352,7 @@ function Slivers({ resources }: { resources: PackagedResource[] }) {
     <section className="mt-6">
       <h2 className="text-lg font-semibold">Packaged slivers ({resources.length})</h2>
       <p className="mt-1 text-sm text-muted">
-        Each is its own immutable CSV object. They stay private drafts until pricing and publication.
+        Each is its own immutable CSV object. They stay private drafts until the seller prices and publishes them.
       </p>
       <div className="mt-3 overflow-x-auto rounded-lg border border-line bg-white">
         <table className="w-full text-left text-sm">
@@ -355,6 +362,7 @@ function Slivers({ resources }: { resources: PackagedResource[] }) {
               <th className="px-3 py-2 font-medium">Rows</th>
               <th className="px-3 py-2 font-medium">Size</th>
               <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Price</th>
               <th className="px-3 py-2 font-medium">SHA-256</th>
             </tr>
           </thead>
@@ -364,7 +372,16 @@ function Slivers({ resources }: { resources: PackagedResource[] }) {
                 <td className="px-3 py-2 [overflow-wrap:anywhere]">{resource.slice ? resource.slice.value : "Full dataset"}</td>
                 <td className="px-3 py-2 tabular-nums">{resource.row_count.toLocaleString("en-US")}</td>
                 <td className="px-3 py-2 tabular-nums">{formatBytes(resource.size_bytes)}</td>
-                <td className="px-3 py-2 text-muted">{resource.status}</td>
+                <td className="px-3 py-2 text-muted">
+                  {resource.status === "published" ? (
+                    <Link to={`/resources/${resource.id}`} className="font-medium text-brand hover:underline">
+                      published
+                    </Link>
+                  ) : (
+                    resource.status
+                  )}
+                </td>
+                <td className="px-3 py-2 tabular-nums">{resource.price_minor ? formatPrice(resource.price_minor) : "—"}</td>
                 <td className="px-3 py-2 font-mono text-xs" title={resource.sha256}>
                   {resource.sha256.slice(0, 12)}…
                 </td>

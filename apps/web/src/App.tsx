@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router";
 import Layout from "./components/Layout";
 import ActivityPage from "./pages/ActivityPage";
 import DatasetPage from "./pages/DatasetPage";
+import InsightsPage from "./pages/InsightsPage";
 import MarketplacePage from "./pages/MarketplacePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import PurchasePage from "./pages/PurchasePage";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="sell/login" element={<SellerLoginPage />} />
           <Route path="sell/upload" element={<UploadPage />} />
           <Route path="sell/datasets/:id" element={<DatasetPage />} />
+          <Route path="sell/insights" element={<InsightsPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route path="purchases/:id" element={<PurchasePage />} />
           <Route path="*" element={<NotFoundPage />} />

@@ -20,6 +20,8 @@ export type PublicResource = {
   seller: { name: string };
   provenance: { source?: string; method?: string; collected_at?: string };
   content: { sha256: string; size_bytes: number; format: string };
+  // Rows the seller chose to make public when publishing (empty unless they selected some).
+  sample_rows: string[][];
   published_at: string | null;
   relevance?: number;
 };
@@ -34,7 +36,7 @@ export type Account = { id: string; email: string; display_name: string; role: "
 
 export type StepStatus = "pending" | "running" | "passed" | "warning" | "failed" | "skipped";
 
-export type DatasetStatus = "queued" | "inspecting" | "review" | "rejected" | "accepted";
+export type DatasetStatus = "queued" | "inspecting" | "review" | "rejected" | "accepted" | "published";
 
 export type Finding = {
   code: string;
@@ -88,7 +90,7 @@ export type ColumnProfile = {
   max_length?: number;
 };
 
-// A packaged sliver as its seller and the reviewer see it (draft until #15 prices and publishes it).
+// A packaged sliver as its seller and the reviewer see it (a draft until the seller publishes it).
 export type PackagedResource = {
   id: string;
   title: string;
@@ -101,6 +103,9 @@ export type PackagedResource = {
   sha256: string;
   size_bytes: number;
   status: "draft" | "review" | "published" | "rejected";
+  price_minor: number | null;
+  published_at: string | null;
+  sample_rows: number;
 };
 
 export type ReviewOutcome = {
@@ -201,4 +206,74 @@ export type PurchaseTimeline = {
   transaction: Transaction | null;
   agent_note: string | null;
   events: ActivityEvent[];
+};
+
+// Valuation and publication, mirroring apps/api/sliver_api/valuation.py and seller/pricing.py.
+
+export type ValuationFactor = {
+  name: "quality" | "uniqueness" | "demand" | "public_availability" | "coverage";
+  label: string;
+  factor: number;
+  inputs: Record<string, unknown>;
+  reason: string;
+};
+
+export type Valuation = {
+  suggested_price_minor: number;
+  range: { low_price_minor: number; high_price_minor: number };
+  base: { price_minor: number; source: "comparables" | "category"; inputs: Record<string, unknown> };
+  factors: ValuationFactor[];
+};
+
+export type SliverValuation = {
+  id: string;
+  title: string;
+  label: string;
+  row_count: number;
+  status: PackagedResource["status"];
+  valuation: Valuation | null;
+  price_minor?: number;
+  accepted_suggestion?: boolean | null;
+  published_at?: string | null;
+  sample_rows?: number;
+};
+
+export type Explanation = { text: string; source: "claude" | "template"; model?: string; reason?: string };
+
+export type SampleCandidate = { row: number; values: string[]; problem: string | null };
+
+export type ValuationReport = {
+  dataset_id: string;
+  status: DatasetStatus;
+  publishable: boolean;
+  payout_ready: boolean;
+  explanation: Explanation | null;
+  slivers: SliverValuation[];
+  sample: { max_rows: number; selected: number[]; header: string[]; candidates: SampleCandidate[] };
+};
+
+export type DemandItem = {
+  query: string;
+  searches: number;
+  unmet_searches: number;
+  last_seen: string;
+  matches: { id: string; title: string; status: PackagedResource["status"] }[];
+};
+
+export type Earning = {
+  payment_id: string;
+  resource: { id: string; title: string };
+  amount: { value: string; asset: string; usd_minor: number };
+  network: string;
+  payer: string | null;
+  settled_at: string | null;
+  transaction: { hash: string; ledger_index: number | null; explorer_url: string };
+};
+
+export type SellerInsights = {
+  cursor: number;
+  resource_ids: string[];
+  payout_address: string | null;
+  earnings: { purchases: number; usd_minor: number; xrp_drops: string; items: Earning[] };
+  demand: { days: number; items: DemandItem[] };
 };

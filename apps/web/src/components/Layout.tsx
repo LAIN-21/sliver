@@ -1,7 +1,9 @@
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useLocation } from "react-router";
 
 import { useSession } from "../session";
 import HealthBadge from "./HealthBadge";
+
+const INSIGHTS = { to: "/sell/insights", label: "Insights", end: false };
 
 const NAV = [
   { to: "/", label: "Marketplace", end: true },
@@ -11,6 +13,10 @@ const NAV = [
 
 export default function Layout() {
   const { account, logout } = useSession();
+  const { pathname } = useLocation();
+  const nav = account?.role === "seller" ? [...NAV.slice(0, 2), INSIGHTS, ...NAV.slice(2)] : NAV;
+  // "Sell data" covers /sell/*, except the insights page, which has its own entry.
+  const onInsights = pathname.startsWith(INSIGHTS.to);
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-line bg-white">
@@ -20,14 +26,16 @@ export default function Layout() {
             <span className="hidden text-sm text-muted sm:inline">data agents can buy by the slice</span>
           </NavLink>
           <nav aria-label="Main" className="flex gap-1">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
                   `rounded-md px-3 py-2 text-sm font-medium ${
-                    isActive ? "bg-brand-soft text-brand" : "text-muted hover:bg-surface hover:text-ink"
+                    isActive && !(item.to === "/sell" && onInsights)
+                      ? "bg-brand-soft text-brand"
+                      : "text-muted hover:bg-surface hover:text-ink"
                   }`
                 }
               >

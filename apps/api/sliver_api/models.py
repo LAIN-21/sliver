@@ -103,6 +103,10 @@ class Resource(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Rows the seller explicitly chose to show publicly (lists of cell strings); empty by default.
+    sample_rows: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    # Private snapshot of the valuation used at publication: inputs, breakdown, price, explanation.
+    valuation: Mapped[dict | None] = mapped_column(JSONB)
 
     __table_args__ = (
         CheckConstraint("price_minor > 0 AND price_minor <= 100000000", name="resources_price"),

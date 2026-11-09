@@ -1,0 +1,12 @@
+{
+  "name": "submit_explanation",
+  "description": "Submit the plain-language explanation of the computed price.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "explanation": {"type": "string"}
+    },
+    "required": ["explanation"],
+    "additionalProperties": false
+  }
+}
