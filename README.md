@@ -1,6 +1,6 @@
 # Sliver
 
-**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, and pay Sliver on XRPL Testnet with one retried HTTP request. Sliver keeps a platform fee (10% by default) and pays the seller the rest every 15 days. Sliver never holds buyer keys and never spends on a buyer's behalf.
+**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, or get a quote for a custom slice of exactly the rows they need, and pay Sliver on XRPL Testnet with one retried HTTP request. Sliver keeps a platform fee (10% by default) and pays the seller the rest every 15 days. Sliver never holds buyer keys and never spends on a buyer's behalf; it holds the collected Testnet funds until each payout.
 
 Ripple track. Built after the team's SingHacks finalist [Ledger402](https://github.com/LAIN-21/ripple-challenge), see [Since SingHacks](#since-singhacks).
 
@@ -9,7 +9,7 @@ Ripple track. Built after the team's SingHacks finalist [Ledger402](https://gith
 | Buy from your own agent | [Sliver MCP](packages/sliver-mcp/README.md): free and open source, runs on your machine |
 | How payment works | [x402 on XRPL Testnet](#x402-on-xrpl-testnet-step-by-step) · [ADR 0004](docs/adr/0004-x402-payments-on-xrpl.md) |
 | Where to check each judging criterion | [Criteria map](#criteria-map) |
-| Demo video script | [docs/DEMO.md](docs/DEMO.md) |
+| The demo story | [An agent buys what its research is missing](#the-demo-story) · [video script](docs/DEMO.md) |
 | Builder feedback | [docs/BUILDER_FEEDBACK.md](docs/BUILDER_FEEDBACK.md) |
 
 ## The problem
@@ -19,6 +19,18 @@ Ripple track. Built after the team's SingHacks finalist [Ledger402](https://gith
 **Data owners** have useful tables but no cheap way to sell them to machines. Pricing, packaging, privacy checks and payment collection each take work, publishing raw data risks leaking what they meant to sell, and they can't see what buyers are looking for.
 
 **Sliver** turns an uploaded table into machine-purchasable slivers. Each one is a whole dataset or one slice of it (one lane, one route, one month), stored as its own immutable file with its own SHA-256. Agents discover slivers through metadata only and pay per sliver with x402. The bytes they receive are exactly the ones whose hash was listed.
+
+## The demo story
+
+The human never mentions Sliver. A founder asks their own AI for real work: *"I'm planning to start a port logistics company in Singapore, probably near the new Tuas terminal. How expensive could it be to run, given the container volumes we could expect and today's operating costs?"* The agent already has a Testnet wallet with the Sliver MCP and a spending limit.
+
+1. It researches public sources, which have port-wide totals but no volumes by terminal and no current cost benchmarks.
+2. It finds both on Sliver (`sliver_search`), checks the fit (`sliver_evaluate`), and is told that a custom slice fits better than the pre-cut slivers.
+3. It gets free quotes for exactly the rows it needs (`sliver_quote_slice`): 12 months of Tuas throughput, **12 rows × 8 columns for $0.90**, and three months of every operating-cost category, **69 rows × 7 columns for $1.25**, instead of $19 for both full tables (prices from a rehearsal on the seeded catalog).
+4. It asks its human: "I found data worth buying: $2.15 for these rows, agree?" Only after the yes does it buy (`sliver_buy`): one x402 payment per slice from its own wallet to Sliver's platform wallet, checked on the ledger by Sliver before the bytes are delivered and checked against their SHA-256 by the agent.
+5. It writes the estimate from the bought rows. The sellers see each sale credited to them, net of Sliver's 10% fee, with their next payout date.
+
+The video script, with the exact prompt, the tool calls, the screens and narration, is [docs/DEMO.md](docs/DEMO.md). `make demo` runs the same quote-ask-buy flow for the operating-cost slice on Testnet, with a scripted "yes" ([transactions below](#testnet-transactions-from-make-demo)).
 
 ## Architecture
 
@@ -98,7 +110,7 @@ To sign in as a seller and buy on Testnet:
    make demo
    ```
 
-   A demo seller uploads a fresh synthetic table, the pipeline accepts it (or, if it misses the quality threshold with no blocking finding, the demo reviewer approves it), and the seller publishes it at the suggested prices. A scripted buyer running the Sliver MCP's own code then declines a question Sliver can't answer and buys last month's sliver on Testnet within a $5 budget. The validated transaction is written into [Testnet transactions](#testnet-transactions-from-make-demo). It runs `make wallets` itself and never resets data ([details](docs/DEVELOPMENT.md#demo-make-demo)).
+   A demo seller uploads a fresh synthetic table, the pipeline accepts it (or, if it misses the quality threshold with no blocking finding, the demo reviewer approves it), and the seller publishes it at the suggested prices. A scripted buyer running the Sliver MCP's own code then, with a $5 budget per question, declines a question Sliver can't answer, buys last month's sliver of the new table, and for the port-business question quotes a custom slice of the seeded operating-cost table and buys it after a scripted "yes". Every payment goes to Sliver's platform wallet, and the demo checks on the seller's insights that each sale is credited to the seller (gross, Sliver's fee, net, next payout). The validated transactions are written into [Testnet transactions](#testnet-transactions-from-make-demo). It runs `make wallets` itself and never resets or deletes data ([details](docs/DEVELOPMENT.md#demo-make-demo)).
 
 Sign in at http://127.0.0.1:5173/sell/login as `harbour-analytics@sliver.local`, `strait-line-data@sliver.local` or `reviewer@sliver.local`. As a seller, upload a CSV at `/sell/upload`; once it is accepted, its page shows "Price and publish". Your earnings and unmet buyer demand are at `/sell/insights`. `make dev-stop` stops the stack and keeps its data. Every target is described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#make-targets).
 
@@ -116,6 +128,12 @@ claude mcp add sliver -- uvx --from "git+https://github.com/LAIN-21/sliver#subdi
 
 The first command creates and faucet-funds a Testnet wallet in `~/.sliver/wallet.json` (mode 0600). The second adds the server to Claude Code. The Claude Desktop and Cursor JSON, and every setting (`SLIVER_API_URL`, the caps, the RPC allow-list), are in the [MCP README](packages/sliver-mcp/README.md#install).
 
+`uvx` caches the install. To pick up a newer MCP from `main`, refresh it once and restart the agent app (quit Claude Desktop fully and reopen it):
+
+```bash
+uvx --refresh --from "git+https://github.com/LAIN-21/sliver#subdirectory=packages/sliver-mcp" sliver-mcp wallet show
+```
+
 | Tool | What it does | Spends? |
 |---|---|---|
 | `sliver_search` | Search the catalog (public metadata only) | No |
@@ -126,7 +144,7 @@ The first command creates and faucet-funds a Testnet wallet in `~/.sliver/wallet
 | `sliver_wallet` | Address, balance, last-24-hour spend (never the seed) | No |
 | `sliver_purchases` | Purchases made from this machine | No |
 
-Then ask your agent something like "Find weekly container spot rates from Singapore to Shanghai since September. Budget $5."
+Then ask your agent something like "Find weekly container spot rates from Singapore to Shanghai since September. Budget $5.", or give it real work and a spending limit, as in [the demo story](#the-demo-story).
 
 Any x402 v2 XRPL client can buy too. `make smoke-testnet` uses t54's SDK, and `GET /.well-known/x402` lists every paid endpoint and price.
 
@@ -168,19 +186,21 @@ Every step is recorded as a public activity event (no headers, blobs, invoice id
 
 ### Testnet transactions from `make demo`
 
-Runs before [ADR 0005](docs/adr/0005-platform-collection-and-payouts.md) paid the seller directly; later runs pay Sliver's platform wallet.
-
 <!-- demo-tx:start -->
-_Written by `make demo` on 2026-11-09 12:26 UTC (run `20261109T122601Z`). Each transaction was read back from XRPL Testnet (`s.altnet.rippletest.net`): a validated `tesSUCCESS` Payment from the buyer's wallet straight to the seller. Re-run `make demo` to replace this block; do not edit it by hand._
+_Written by `make demo` on 2026-11-09 14:21 UTC (run `20261109T142114Z`). Each transaction was read back from XRPL Testnet (`s.altnet.rippletest.net`): a validated `tesSUCCESS` Payment from the buyer's wallet to Sliver's platform wallet [`rHM3pbrDGbT6BL7bshUMbX2ffZ9NyPupxY`](https://testnet.xrpl.org/accounts/rHM3pbrDGbT6BL7bshUMbX2ffZ9NyPupxY). Sliver recorded its fee and the seller's net on each sale; the net is owed to the seller and paid out on the 1st and 16th of each month (UTC; payouts are not automated yet, see ADR 0005). Re-run `make demo` to replace this block; do not edit it by hand._
 
-| Transaction | Ledger | Amount | Buyer → seller | Sliver |
-|---|---|---|---|---|
-| [`EBB62A05AEF0761C9A092EE5B13ACE8FB8BE00004C9F9C262CD81E78A5D1645B`](https://testnet.xrpl.org/transactions/EBB62A05AEF0761C9A092EE5B13ACE8FB8BE00004C9F9C262CD81E78A5D1645B) | 22190609 | 0.472 XRP ($1.18) | [`rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w`](https://testnet.xrpl.org/accounts/rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w) → [`rEbme52s62cjVSqbxiUqd94kRsMwoxm7Nd`](https://testnet.xrpl.org/accounts/rEbme52s62cjVSqbxiUqd94kRsMwoxm7Nd) | Singapore Daily Anchorage Wait Times by Vessel Type and Anchorage Queue Size: October 2026 |
+| Transaction | Ledger | Paid by the buyer | Buyer → Sliver's platform wallet | Sliver | Credited to the seller |
+|---|---|---|---|---|---|
+| [`673EDEE94CBA84DC550A7B3058447036EE6E3B2B54AAE7D73F542F36C49955F3`](https://testnet.xrpl.org/transactions/673EDEE94CBA84DC550A7B3058447036EE6E3B2B54AAE7D73F542F36C49955F3) | 22192632 | 0.832 XRP ($2.08) | [`rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w`](https://testnet.xrpl.org/accounts/rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w) → [`rHM3pbrDGbT6BL7bshUMbX2ffZ9NyPupxY`](https://testnet.xrpl.org/accounts/rHM3pbrDGbT6BL7bshUMbX2ffZ9NyPupxY) | Singapore Daily Anchorage Wait Times by Vessel Type & Anchorage Count: October 2026 | Strait Line Data (demo seller): $2.08 − $0.20 Sliver fee (10%) = $1.88 net, owed at the 2026-11-16 payout |
+| [`690AC901F3A1B0D411D9F8D46D66D0EE3B7FB54241B364C8597298EAE268BB74`](https://testnet.xrpl.org/transactions/690AC901F3A1B0D411D9F8D46D66D0EE3B7FB54241B364C8597298EAE268BB74) | 22192635 | 0.5 XRP ($1.25) | [`rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w`](https://testnet.xrpl.org/accounts/rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w) → [`rHM3pbrDGbT6BL7bshUMbX2ffZ9NyPupxY`](https://testnet.xrpl.org/accounts/rHM3pbrDGbT6BL7bshUMbX2ffZ9NyPupxY) | Singapore port-business operating costs: custom slice (month 2026-08-01 to 2026-10-31) | Strait Line Data (demo seller): $1.25 − $0.12 Sliver fee (10%) = $1.13 net, owed at the 2026-11-16 payout |
 
-In this run the demo seller uploaded “Singapore anchorage waiting times, daily (demo run 20261109T122601Z)” (184 rows). It was accepted automatically (quality 81) after the pipeline's checks (AI review: Claude (claude-opus-5-5)), and the seller published 7 slivers at their suggested prices. The buyer then asked two questions with a $5 budget, using the Sliver MCP's own search, evaluator and budget-capped buyer:
+In this run the demo seller uploaded “Singapore anchorage waiting times, daily (demo run 20261109T142114Z)” (184 rows). It was accepted automatically (quality 81) after the pipeline's checks (AI review: Claude (claude-opus-5-5)), and the seller published 7 slivers at their suggested prices. The buyer then asked 3 questions with a $5 budget each, using the Sliver MCP's own search, evaluator, custom-slice quote and budget-capped buyer:
 
 1. “Air-cargo rates from Singapore Changi (SIN) to Frankfurt (FRA), per kg. Budget $5.” → `look_elsewhere`: nothing was signed or spent.
-2. “Daily anchorage wait hours in Singapore for container ships, tankers and bulk carriers in October 2026. Budget $5.” → `buy` “Singapore Daily Anchorage Wait Times by Vessel Type and Anchorage Queue Size: October 2026” for $1.18: paid, delivered and SHA-256-verified.
+2. “Daily anchorage wait hours in Singapore for container ships, tankers and bulk carriers in October 2026. Budget $5.” → `buy` “Singapore Daily Anchorage Wait Times by Vessel Type & Anchorage Count: October 2026” for $2.08: paid to Sliver's platform wallet, delivered and SHA-256-verified.
+3. “I'm planning to start a port logistics company in Singapore. What does it cost to run one now: terminal handling, port dues, warehouse rent, trucking, labour and customs brokerage, for August to October 2026? Budget $5.” → `sliver_evaluate` suggested a custom slice; `sliver_quote_slice` quoted 69 rows × 7 columns of “Singapore port-business operating costs” (month 2026-08 to 2026-10) for $1.25 (0.5 XRP). The scripted human said yes, and the buyer bought it for $1.25: paid to Sliver's platform wallet, delivered and SHA-256-verified.
+
+Afterwards the seller's balance on `/sell/insights` showed $3.01 owed by Sliver across 2 sales, with the next payout on 2026-11-16.
 <!-- demo-tx:end -->
 
 ## XRPL AI Starter Kit integration
@@ -238,7 +258,7 @@ Sellers list data for sale. On every sale the seller gets paid and Sliver takes 
 | Suite | Covers | Run |
 |---|---|---|
 | API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, valuation (determinism, each factor's direction, publish, sample-row refusals, the explanation's number guard, insights), custom slices (filter validation, dedupe, pricing properties, unlisted, toggle, rate limit, x402 purchase with the fee snapshot), platform fee (rounding, snapshot surviving a rate change, insights totals, setting bounds, public receipt), auth, activity feed | `make test` |
-| Buyer packages (`packages/`) and `make demo` (`scripts/tests`) | Every `sliver_buy` refusal (asserting nothing was signed), signed-transaction fields, fit evaluation and custom-slice suggestions, quotes that never spend, MCP protocol end to end; the demo's README block writer, Testnet guards, ledger checks, demo table and buyer questions | `cd packages && uv sync --all-packages && uv run pytest` |
+| Buyer packages (`packages/`) and `make demo` (`scripts/tests`) | Every `sliver_buy` refusal (asserting nothing was signed), signed-transaction fields, fit evaluation and custom-slice suggestions, quotes that never spend, MCP protocol end to end; the demo's README block writer (platform wallet, seller credit), Testnet guards, ledger checks, demo table and buyer questions, including the custom slice of the seeded port-cost table | `cd packages && uv sync --all-packages && uv run pytest` |
 | Lint | Ruff for Python, TypeScript typecheck for the web app | `make lint` |
 
 [CI](.github/workflows/ci.yml) runs on every pull request: shellcheck, actionlint and Compose validation; API lint and tests against PostgreSQL; web typecheck and build; the buyer packages on Python 3.11 and 3.13; and the full containerized stack (`make install` twice without overwriting `.env`, all five services healthy, `make test` and `make lint` in containers, `make seed` twice, degraded health with storage stopped, volumes kept on stop). Tests never call the Claude API, a facilitator or the ledger. The real Testnet purchases are `make smoke-testnet` and `make demo`.
@@ -248,15 +268,15 @@ Sellers list data for sale. On every sale the seller gets paid and Sliver takes 
 | Criterion | Where to look |
 |---|---|
 | Reachability | One-line MCP install for Claude Code, Claude Desktop and Cursor ([MCP README](packages/sliver-mcp/README.md)); any x402 v2 client works, and paid endpoints are listed at `GET /.well-known/x402`; the whole stack runs with `make dev-start` |
-| Creativity: AI-native | Claude writes listings and slicing from redacted samples ([`pipeline/ai_review.py`](apps/api/sliver_api/pipeline/ai_review.py)); Claude explains each deterministic price, guarded against invented numbers ([`seller/pricing.py`](apps/api/sliver_api/seller/pricing.py)); unmet agent searches raise prices and show sellers what to supply ([pricing and insights](#pricing-publishing-and-seller-insights)); agents evaluate fit before buying ([`sliver_mcp/evaluate.py`](packages/sliver-mcp/src/sliver_mcp/evaluate.py)) |
+| Creativity: AI-native | An agent doing real work finds, quotes and (after its human's yes) buys the data its research is missing ([the demo story](#the-demo-story)); agents evaluate fit before buying and are pointed to a custom slice of exactly the rows they need ([`sliver_mcp/evaluate.py`](packages/sliver-mcp/src/sliver_mcp/evaluate.py), [`slices/custom.py`](apps/api/sliver_api/slices/custom.py)); Claude writes listings and slicing from redacted samples ([`pipeline/ai_review.py`](apps/api/sliver_api/pipeline/ai_review.py)); Claude explains each deterministic price, guarded against invented numbers ([`seller/pricing.py`](apps/api/sliver_api/seller/pricing.py)); unmet agent searches raise prices and show sellers what to supply ([pricing and insights](#pricing-publishing-and-seller-insights)) |
 | Creativity: XRPL AI Starter Kit + x402 | [Starter Kit integration](#xrpl-ai-starter-kit-integration); [ADR 0004](docs/adr/0004-x402-payments-on-xrpl.md) |
-| Feasibility | One standard x402 payment per sale to Sliver, with the fee and the seller's net recorded and paid out every 15 days; the full seller loop from upload to explainable price, publication and live earnings; deterministic fallbacks without an API key; plain PostgreSQL job queue with no extra infrastructure ([ARCHITECTURE.md](docs/ARCHITECTURE.md)); [limitations](#limitations) stated openly |
+| Feasibility | A [business model](#business-model): one standard x402 payment per sale to Sliver, with Sliver's 10% fee and the seller's net recorded and paid out every 15 days; buyers pay for the slice they need ($2.15 instead of a $19 bundle in the demo); the full seller loop from upload to explainable price, publication and live earnings; deterministic fallbacks without an API key; plain PostgreSQL job queue with no extra infrastructure ([ARCHITECTURE.md](docs/ARCHITECTURE.md)); [limitations](#limitations) stated openly |
 | Technical depth: XRPL and x402 | Ledger re-check ([`ledger_check.py`](apps/api/sliver_api/payments/ledger_check.py)), purchase flow ([`payments/service.py`](apps/api/sliver_api/payments/service.py)), our own x402 client ([`sliver-x402`](packages/sliver-x402/README.md)) |
 | Technical depth: agents | [`packages/sliver-mcp`](packages/sliver-mcp/README.md): seven tools, server instructions for honest buying, the spending policy in [`buyer.py`](packages/sliver-mcp/src/sliver_mcp/buyer.py) |
 | Technical depth: security, tests, safeguards | [Security and safeguards](#security-and-safeguards), deterministic pricing with a full breakdown ([`valuation.py`](apps/api/sliver_api/valuation.py)), [Tests and CI](#tests-and-ci), [transactions.md](docs/agents/transactions.md), [seller.md](docs/agents/seller.md), [catalog.md](docs/agents/catalog.md) |
-| UX: agent actions, payments, on-chain | Live `/activity` feed and `/purchases/{id}` timeline (402 → signature → verified → integrity → settlement → ledger validated → delivered, with explorer links); seller dataset page with each pipeline stage, Claude's listing and the "Price and publish" breakdown; `/sell/insights` with live earnings and tx links; [demo script](docs/DEMO.md) |
+| UX: agent actions, payments, on-chain | The agent's quote ("$X for N rows × M columns, agree?") and the human's yes before any spend; live `/activity` feed and `/purchases/{id}` timeline (402 → signature → verified → integrity → settlement → ledger validated → delivered, with explorer links, the agent's stated reason and the fee split); seller dataset page with each pipeline stage, Claude's listing and the "Price and publish" breakdown; `/sell/insights` with the balance owed, next payout date and live earnings with tx links; [demo script](docs/DEMO.md) |
 | Builder feedback | [docs/BUILDER_FEEDBACK.md](docs/BUILDER_FEEDBACK.md) |
-| Transaction hashes | [Testnet transactions](#testnet-transactions-from-make-demo) (filled in by `make demo`) |
+| Transaction hashes | [Testnet transactions](#testnet-transactions-from-make-demo) (written by `make demo`: buyer → Sliver's platform wallet, validated and `tesSUCCESS`) |
 
 ## Since SingHacks
 
@@ -278,6 +298,8 @@ Sliver is **the marketplace on the other side**: the place a buying agent like L
 - **The facilitator is best effort with no SLA.** The real Testnet purchase is not part of CI. The x402.org facilitator can be configured with one setting, but only its `/verify` has been tested with our payments.
 - **Payee pinning.** The public catalog does not publish Sliver's platform address yet, so the MCP trusts the payee on the first purchase from a Sliver API and pins it after that.
 - **Heuristic checks.** The privacy scan is regex-based and can miss unknown formats. The leak guard matches whole values, ignores values shorter than four characters or longer than twelve words, and can miss reformatted numbers. Claude's concerns vary between runs, so borderline datasets can land on either side of the auto-accept threshold on their first review.
+- **The agent's spending permission lives on the buyer's side.** The MCP enforces the human's budget and caps, and its instructions tell the agent to ask before buying a quoted slice, but the "ask, then buy" step is the agent's behaviour, not something Sliver can enforce. In `make demo` the human's "yes" is scripted.
+- **Custom-slice suggestions are heuristic.** `sliver_evaluate` matches terms in public metadata; the agent chooses the final filter, and other periods or filters give other prices.
 - **Demo accounts only.** There is no public sign-up. The public activity feed has no rate limit or moderation for agent notes.
 - **The demo data is synthetic.**
 

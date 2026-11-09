@@ -234,22 +234,44 @@ def custom_slice_suggestion(
     share = best.get("need_share")
     if share is None or share > CUSTOM_SLICE_SHARE:
         return None
-    target = next(
-        (r for r in reports if r["verdict"] != "look_elsewhere" and r["custom_slices_available"]), None
-    )
-    if target is None:
+    sliceable = [r for r in reports if r["verdict"] != "look_elsewhere" and r["custom_slices_available"]]
+    if not sliceable:
         return None
     by_id = {listing.get("id"): listing for listing in listings}
+
+    def origin(report: dict[str, Any]) -> tuple:
+        """Columns and seller: a pre-cut sliver shares both with the full dataset it was cut from."""
+        listing = by_id.get(report["resource_id"]) or {}
+        columns = tuple(column.get("name") for column in listing.get("columns") or [])
+        return columns, (listing.get("seller") or {}).get("name")
+
+    # Prefer the best sliver's own full dataset over another table that happens to rank higher.
+    target = next((r for r in sliceable if origin(r) == origin(best)), sliceable[0])
+
+    def cut_of(report: dict[str, Any]) -> dict[str, Any]:
+        return ((by_id.get(report["resource_id"]) or {}).get("coverage") or {}).get("slice") or {}
+
     where = None
     if target is not best:
-        # Keep the best sliver's category (a lane, a port) when the full dataset has that column.
-        cut = ((by_id.get(best["resource_id"]) or {}).get("coverage") or {}).get("slice") or {}
+        # Keep the best sliver's category (a lane, a port) when the full dataset has that column,
+        # unless a sliver for another value of that column fits the need exactly as well: then
+        # the need does not name one value (say, "operating costs" across every cost category),
+        # and the slice should keep them all.
+        cut = cut_of(best)
         text_columns = {
             column.get("name")
             for column in (by_id.get(target["resource_id"]) or {}).get("columns") or []
             if column.get("type") == "text"
         }
-        if cut.get("column") in text_columns and isinstance(cut.get("value"), str):
+        tied = any(
+            report is not best
+            and report["verdict"] == best["verdict"]
+            and report["score"] == best["score"]
+            and cut_of(report).get("column") == cut.get("column")
+            and cut_of(report).get("value") != cut.get("value")
+            for report in reports
+        )
+        if cut.get("column") in text_columns and isinstance(cut.get("value"), str) and not tied:
             where = {cut["column"]: cut["value"]}
     return {
         "tool": "sliver_quote_slice",

@@ -1,131 +1,169 @@
 # Demo video script (about 3 minutes)
 
-The video follows one story: a seller lists and prices data, a buying agent in Claude Desktop declines what doesn't fit and buys what does within its human's budget, and the payment shows up live, in the seller's earnings and on the XRP Ledger. Each scene names the judging criteria it covers, so the cut can be checked against them.
+The video tells one story. A founder asks their own AI for real work and never mentions Sliver. The agent researches public sources, notices what they don't have, finds it on Sliver, quotes exactly the slice it needs, asks its human "I found data worth buying: $X for N rows × M columns, agree?", pays over x402 on XRPL Testnet after the yes, and writes the estimate from the data. Then the camera follows the money: the live payment timeline, the seller's balance, and the Payment to Sliver's wallet on the ledger.
 
-> **Draft for team review.** See [Open questions](#open-questions-for-the-team).
+The pitch in one line: **buy only the slice you need**, data you couldn't otherwise get or would have to buy as a whole bundle. The buyer pays Sliver's platform wallet; Sliver keeps its 10% fee and pays the seller every 15 days.
+
+> **Draft for team review.** The numbers in this script come from a rehearsal run (see [Rehearsal facts](#rehearsal-facts)). See also [Open questions](#open-questions-for-the-team).
+
+## Rehearsal facts
+
+From a rehearsal run on 9 November 2026: an isolated stack on this branch, freshly seeded with `make seed` (34 slivers), quoted with the MCP's own evaluator and quote code. The full tables and the slices are the seeded synthetic data in [`examples/datasets`](../examples/datasets), so the same quotes come back on any freshly seeded stack. Resource ids differ per stack.
+
+| Need | `sliver_evaluate` arguments | What it says | `sliver_quote_slice` arguments | Quote |
+|---|---|---|---|---|
+| Volumes near Tuas | `need: "Singapore port container throughput Tuas"`, `time_start: "2025-11"`, `time_end: "2026-10"`, `budget_usd: 5` | `buy` "Singapore port container throughput: Tuas" ($2.50, 24 months), and a custom slice is suggested because the need is half of what that sliver covers | the full "Singapore port container throughput" table, `time_start: "2025-11"`, `time_end: "2026-10"`, `where: {"terminal": "Tuas"}` | **12 rows × 8 columns for $0.90** (0.36 XRP), seller Harbour Analytics |
+| Operating costs now | `need: "Singapore port logistics operating costs"`, `time_start: "2026-08"`, `time_end: "2026-10"`, `budget_usd: 5` | `buy` one $3.00 cost-category sliver (all six tie), and a custom slice of the whole table is suggested, keeping every category | the full "Singapore port-business operating costs" table, `time_start: "2026-08"`, `time_end: "2026-10"`, no `where` | **69 rows × 7 columns for $1.25** (0.5 XRP), seller Strait Line Data |
+
+Together: **$2.15** instead of $19.00 for both full tables ($9.00 + $10.00), or $20.50 for the Tuas sliver plus all six cost-category slivers. Sliver records a 10% fee on each sale (rounded down, in the seller's favour): Strait Line Data is credited $1.13 net of $0.12, Harbour Analytics $0.81 net of $0.09.
+
+`make demo` buys the same operating-cost slice for the same price on Testnet; its last run is in the README's [Testnet transactions](../README.md#testnet-transactions-from-make-demo).
 
 ## Before recording
 
-Start from a freshly seeded stack so the timeline shows only the demo purchase.
+Record after this branch is merged: the custom-slice suggestions above rely on the evaluator changes in it, and the MCP installs from `main`.
 
-1. On a fresh checkout, run `make install` first so `.env` is created from `.env.example` (don't create it by hand: `make` only copies the example when `.env` is missing). Set `SLIVER_SELLER_PASSWORD`, `SLIVER_REVIEWER_PASSWORD` and `ANTHROPIC_API_KEY` in `.env` (the dataset page should say "Written by Claude", not "offline fallback"). If earlier test purchases are on the timeline, run `make dev-reset` first; it deletes all local data. Then run `make dev-start`, `make seed` and `make wallets` (re-run `make wallets` after every reset, see [DEVELOPMENT.md](DEVELOPMENT.md#make-targets)).
-2. Install the [Sliver MCP](../packages/sliver-mcp/README.md) in Claude Desktop with `"SLIVER_API_URL": "http://127.0.0.1:8000"`, and create the funded buyer wallet (the Claude Desktop setup doesn't put `sliver-mcp` on your shell's PATH, so use `uvx`):
+1. **Reset and seed.** On the recording machine: `make dev-reset` (it deletes all local data, so the timeline and balances show only the demo), then `make dev-start`, `make seed` and `make wallets` (re-run `make wallets` after every reset, see [DEVELOPMENT.md](DEVELOPMENT.md#make-targets)). Don't run `make demo` on this stack after the reset: its purchases would show up in the balances and on the timeline. `.env` needs `SLIVER_SELLER_PASSWORD` for the insights scene; `ANTHROPIC_API_KEY` is not needed, because nothing is uploaded in the video.
+2. **Refresh the MCP in Claude Desktop.** `uvx` caches the git install, so a stale copy may not have `sliver_quote_slice` or the latest evaluator. Run this once, then fully quit Claude Desktop (Cmd+Q) and reopen it:
 
    ```bash
-   uvx --from "git+https://github.com/LAIN-21/sliver#subdirectory=packages/sliver-mcp" sliver-mcp wallet init
+   uvx --refresh --from "git+https://github.com/LAIN-21/sliver#subdirectory=packages/sliver-mcp" sliver-mcp wallet show
    ```
 
-   If a wallet already exists, `wallet init` reuses it without funding it again. After rehearsals, run the same command with `wallet show` instead of `wallet init` and make sure the balance covers the purchase. Keep the default caps ($5 per purchase, $20 per day).
-3. Prepare the seller CSV for scene 2. It must not duplicate a seeded dataset: the duplicates stage flags exact and near copies of published data and sends them to the reviewer. It should also be accepted automatically (quality score of at least 70, no blocking findings), because only an accepted dataset can be priced and published. Rehearse the upload once before the final `make dev-reset` to check this.
-4. Open browser tabs: http://127.0.0.1:5173/sell/login, http://127.0.0.1:5173/activity, and https://testnet.xrpl.org. After signing in, open http://127.0.0.1:5173/sell/insights in a fourth tab; it updates live, so leave it open through scene 6.
-5. **Never show `.env`, a wallet seed, `~/.sliver/wallet.json`, an API key or a password on screen.** Type the seller password off camera or blur it. `sliver_wallet` shows only the address and balance, so it is safe to show.
-6. If you record a `make demo` run, check its step 3 output. "accepted automatically" is the normal case. If it prints that `reviewer@sliver.local` approved the upload, Claude's quality score was just under the auto-accept threshold with no blocking finding, and the demo's scripted reviewer account approved it. Either re-run `make demo` until it is accepted automatically, or narrate it as it happened (see scene 3).
+   In Claude Desktop's connector settings, `sliver` must list seven tools, including `sliver_quote_slice`. Its config needs `"SLIVER_API_URL": "http://127.0.0.1:8000"` ([MCP README](../packages/sliver-mcp/README.md#install)). `wallet show` prints the buyer address and balance; it must cover $2.15 (0.86 XRP) plus fees. If there is no wallet yet, run the same command with `wallet init`.
+3. **Give the agent its standing permission.** Create a Claude Desktop project for the founder with web search on and these project instructions (not shown in the video, but show them if asked):
+
+   > You have a Testnet data wallet through the Sliver tools. When public sources don't have the data you need, you may look for it there. Before buying anything, tell me what you found, the price and what it covers, and wait for my yes. Never spend more than $5 on one purchase.
+
+   This is the "agent already has a wallet and spending permission" premise; the human's prompt itself never mentions Sliver. Keep the MCP's default caps ($5 per purchase, $20 per day).
+4. **Open tabs:** http://127.0.0.1:5173/activity; http://127.0.0.1:5173/sell/insights signed in as `strait-line-data@sliver.local` (seller of the operating-cost table; type the password off camera); and the platform wallet's account page, https://testnet.xrpl.org/accounts/ followed by `SLIVER_PLATFORM_ADDRESS`. To get that address without opening `.env`, run `grep '^SLIVER_PLATFORM_ADDRESS=' .env` in a terminal that is not being recorded; it prints only the public address.
+5. **Never show secrets:** not `.env`, not a seed (`SLIVER_*_SEED`), not `~/.sliver/wallet.json`, not an API key or password. Addresses, transaction hashes and `sliver_wallet` output are public and safe to show.
+6. **Rehearse the chat once,** then reset again (step 1). Check that Claude's `sliver_evaluate` and `sliver_quote_slice` arguments match [Rehearsal facts](#rehearsal-facts). Claude chooses its own arguments; if it asks for a different period or filter, the rows and price change with it, and the narration should follow what is on screen.
+
+## The opening prompt
+
+Type exactly:
+
+> I'm planning to start a port logistics company in Singapore, probably near the new Tuas terminal. How expensive could it be to run, given the container volumes we could expect and today's operating costs? Research it and give me a one-page estimate with your sources.
 
 ## Shot list
 
 | # | Time | Scene | On screen | Criteria |
 |---|---|---|---|---|
-| 1 | 0:00–0:15 | Problem | Title card, then the marketplace at http://127.0.0.1:5173 | Creativity |
-| 2 | 0:15–0:40 | Seller upload | `/sell/upload`: choose CSV, title, provenance, rights confirmation, upload | Reachability, UX |
-| 3 | 0:40–1:10 | Pipeline and Claude review | `/sell/datasets/{id}`: stages tick through, findings, "Written by Claude", packaged slivers with SHA-256, quality score and decision | Creativity (AI-native), Technical depth (safeguards) |
-| 4 | 1:10–1:25 | Price and publish | Dataset page: suggested prices, Claude's explanation, "Why?" breakdown, one override, publish | Creativity (AI-native), Feasibility |
-| 5 | 1:25–1:50 | Agent declines a miss | Claude Desktop: air-cargo question → `sliver_search`, `sliver_evaluate` → `look_elsewhere` | Technical depth (agents), Safeguards |
-| 6 | 1:50–2:25 | Agent buys within budget | Claude Desktop: spot-rate question with a $5 budget → `sliver_evaluate` → `sliver_buy` → file, SHA-256 verified, tx hash | Creativity (x402), Technical depth (XRPL) |
-| 7 | 2:25–2:45 | Live timeline and earnings | `/activity`, the purchase's `/purchases/{id}` page, then `/sell/insights` | UX, Feasibility |
-| 8 | 2:45–3:00 | On chain | Explorer link from the timeline: Payment buyer → seller, `InvoiceID`, validated | Technical depth (XRPL), Feasibility |
+| 1 | 0:00–0:12 | Hook | Title card, then Claude Desktop | Creativity |
+| 2 | 0:12–0:25 | The ask | The opening prompt is typed and sent | UX (agent actions) |
+| 3 | 0:25–0:45 | Public research | Claude's web searches and what it finds | Creativity (AI-native) |
+| 4 | 0:45–1:20 | Finds and quotes on Sliver | `sliver_search`, `sliver_evaluate`, two `sliver_quote_slice` calls | Creativity (AI-native), Technical depth (agents) |
+| 5 | 1:20–1:35 | The human says yes | Claude's quote message, the reply "Yes, go ahead." | UX (agent actions), Safeguards |
+| 6 | 1:35–2:00 | Pays over x402 | Two `sliver_buy` calls; cut to the live `/activity` timeline and one `/purchases/{id}` page | Creativity (Starter Kit + x402), Technical depth (XRPL, x402), UX (payments) |
+| 7 | 2:00–2:20 | The estimate | Claude's one-page estimate (or dashboard) built from the bought rows | Feasibility, UX |
+| 8 | 2:20–2:40 | The seller gets paid | `/sell/insights`: the sale, Sliver's fee, the net, the balance and next payout date | Feasibility |
+| 9 | 2:40–3:00 | On chain | testnet.xrpl.org: the Payment from the agent's wallet to Sliver's platform wallet | Technical depth (XRPL), UX (on-chain) |
 
 ## Scenes
 
-### 1. Problem (0:00–0:15)
+### 1. Hook (0:00–0:12)
 
-**On screen:** title card "Sliver: data for agents, paid on the XRP Ledger", then the marketplace page.
+**On screen:** title card "Sliver: buy only the slice of data you need", then Claude Desktop.
 
-**Narration:** "AI agents need small, specific facts, but data is sold as whole datasets behind subscriptions and sign-ups. Sliver lets anyone sell data in slices that agents can find, check and pay for themselves on the XRP Ledger."
+**Narration:** "AI agents do real research now, and they hit the same wall people do: the data they need is sold as whole datasets, behind subscriptions and sign-ups. Sliver sells it in slices that agents can find, check and pay for themselves, on the XRP Ledger."
 
-### 2. Seller upload (0:15–0:40)
+### 2. The ask (0:12–0:25)
+
+**On screen:** the founder's project in Claude Desktop. Type [the opening prompt](#the-opening-prompt) and send it.
+
+**Narration:** "Here's a founder thinking about a port logistics company in Singapore. They ask their own AI the real question. They don't mention Sliver or any data source."
+
+### 3. Public research (0:25–0:45)
+
+**On screen:** Claude's web searches. It finds public, port-wide figures (annual container throughput, general guides to setting up a company) but no monthly volumes by terminal and no current cost benchmarks for terminal handling, port dues, warehouse rent, trucking, labour and customs brokerage. Speed this up in editing.
+
+**What the agent should do:** say what public sources cover and what is missing, then decide to look for the missing data with its Sliver tools.
+
+**Narration:** "It starts with public sources. They give the big picture, but not what an estimate needs: volumes at the terminal it would use, and what things cost today."
+
+### 4. Finds and quotes on Sliver (0:45–1:20)
+
+**On screen:** expand the tool calls as they run.
+
+1. `sliver_search` for port throughput and operating costs: two seeded tables from two demo sellers, each also sold as pre-cut slivers (one per terminal, one per cost category).
+2. `sliver_evaluate` for each need, with the arguments in [Rehearsal facts](#rehearsal-facts). Pause on one result: the recommendation, the reasons and the `custom_slice` suggestion ("It covers much more than the need: a custom slice … may cost less").
+3. `sliver_quote_slice` twice. Pause on a quote: rows × columns, the price in USD and XRP, the coverage, the SHA-256, and `spent: 0`.
+
+**What the agent should do:** quote only what the estimate needs, the last 12 months at Tuas and the last three months of every cost category, and spend nothing yet.
+
+**Narration:** "The agent finds the missing data on Sliver. It doesn't buy whole tables: Sliver's evaluator says a custom slice fits better, so the agent asks for a quote on exactly the rows it needs, the last twelve months at Tuas and the last three months of operating costs. Quoting is free; Sliver cuts the rows, prices them per row from the seller's price, and hashes them. Nothing has been spent."
+
+### 5. The human says yes (1:20–1:35)
+
+**On screen:** Claude's message. From the rehearsal, it should read close to:
+
+> I found data worth buying on Sliver, a data marketplace:
+> 1. Tuas terminal container throughput, November 2025 to October 2026: **12 rows × 8 columns for $0.90** (0.36 XRP).
+> 2. Singapore port-business operating costs, all six categories, August to October 2026: **69 rows × 7 columns for $1.25** (0.5 XRP).
+>
+> That's $2.15 in total on XRPL Testnet, instead of $19 for both full tables. Shall I buy them?
+
+Type: **Yes, go ahead.**
+
+**Narration:** "Then it asks. Two dollars fifteen for exactly these rows, instead of nineteen dollars for the full tables. The agent has a wallet and a spending limit, but the decision is the human's, and Sliver never spends on anyone's behalf."
+
+### 6. Pays over x402 (1:35–2:00)
 
 **On screen:**
 
-1. Sign in at `/sell/login` as `strait-line-data@sliver.local` (password typed off camera). This demo seller owns the seeded SGSIN-CNSHA sliver bought in scene 6, so its earnings appear in scene 7.
-2. Go to `/sell/upload`. Choose the prepared CSV. Fill in title, source, method and collection date, tick the rights confirmation, and upload.
+1. Two `sliver_buy` calls, each with the quote's `resource_id`, a `budget_usd` no higher than what the human approved, and a short `reason`. Pause on one result: `pay_to` (Sliver's platform wallet), the saved file, `sha256_verified: true`, the transaction hash and explorer link.
+2. Cut to `/activity`: the two purchases arrive live, with the agent's reason. Open one to `/purchases/{id}` and scroll its steps: "402 Payment Required", "Signed payment received", "Verified by the facilitator", "Data integrity checked", "Submitted to the XRP Ledger", "Settled", "Validated on the ledger", "Data delivered", and the split: Sliver's 10% fee and the seller's net.
 
-**Narration:** "A seller uploads a CSV with its provenance and confirms they have the rights to sell it. Nothing is public yet."
+**Narration:** "Each purchase is one standard x402 payment. Sliver answers with a 402; the agent's MCP checks the request against the quote, signs an XRPL payment locally with its own key, and pays Sliver's wallet. A facilitator from the XRPL AI Starter Kit settles it, and Sliver checks the ledger itself before it delivers the bytes, which match the quoted hash. Every step shows up live."
 
-### 3. Pipeline and Claude review (0:40–1:10)
+### 7. The estimate (2:00–2:20)
 
-**On screen:** the dataset page polls as each stage finishes: validate, profile, privacy, duplicates, AI review, research (skipped unless enabled), package, decide. Pause on:
+**On screen:** Claude's one-page estimate (or an artifact dashboard): expected volumes from the Tuas rows, monthly running costs from the cost rows (warehouse rent, trucking, labour, terminal handling, port dues, customs brokerage), with sources: the public pages it read and the two Sliver slices with their transaction hashes. Caption: "Demo data is synthetic."
 
-- the proposed public listing with "Written by Claude (model)";
-- the packaged slivers, each with rows, size and SHA-256;
-- the quality score and the decision (accepted, or waiting for a reviewer).
+**Narration:** "And it does the work it was asked for: an estimate built from public sources and from the rows it bought, with every source cited, down to the transaction."
 
-Optional 5-second cutaway: an earlier upload of `examples/seller/customer-contacts-pii.csv`, showing privacy findings that name columns and row numbers but never the values, and the dataset sent to the reviewer queue.
+### 8. The seller gets paid (2:20–2:40)
 
-**Narration:** "A pipeline validates and profiles the table, scans it for personal data, and checks it against the catalog for duplicates. Then Claude writes the public listing and decides how to slice it. Claude only sees the schema, a profile and up to twenty redacted rows. It can send a dataset to a human reviewer, but it can never approve one. Each slice becomes its own file with its own hash."
+**On screen:** the `/sell/insights` tab (Strait Line Data), updated without a reload: the $1.25 sale tagged "custom slice", Sliver's $0.12 fee, the $1.13 net, the balance owed and the next payout date (the 1st or 16th, UTC).
 
-If the recorded run was approved by the demo reviewer rather than accepted automatically, add: "Claude's score was just under the auto-accept threshold, so the reviewer account approved it, here scripted by `make demo`. An upload with a blocking privacy, duplicate or sensitivity finding can never be approved this way."
+**Narration:** "On the other side, the seller sees the sale as it lands: what the buyer paid, Sliver's ten percent, and what Sliver owes them at the next payout, every fifteen days. They published one table; Sliver sold the slice a buyer needed."
 
-### 4. Price and publish (1:10–1:25)
+### 9. On chain (2:40–3:00)
 
-**On screen:** scroll the dataset page to "Price and publish":
+**On screen:** the platform wallet's page on testnet.xrpl.org (or the explorer link from the purchase timeline): the Payment from the agent's wallet to Sliver's platform wallet, the delivered amount, the `InvoiceID` field and the validated result.
 
-1. Pause on the suggested prices, their ranges and the explanation ("Explained by Claude (model)"; "Sliver's template" means no API key or a rejected answer).
-2. Open "Why?" on one sliver: the base (comparables or category), then quality, uniqueness, demand, public availability and coverage, each with its reason.
-3. Override one sliver's price, leave the rest at their suggestions, and publish. The panel switches to "Published prices" with listing links.
+**Narration:** "And here it is on the XRP Ledger: a validated payment from the agent's wallet to Sliver, bound to the invoice. Sliver: buy only the slice you need, settled with x402 on XRPL."
 
-Don't tick sample rows unless the chosen CSV has none flagged; nothing is public unless the seller selects it.
+### Optional: the agent declines a miss (cut if over time)
 
-**Narration:** "Sliver suggests a price for every slice with a fixed formula: comparable listings, quality, overlap with what's already for sale, unmet buyer demand, and coverage. Claude explains the numbers but never sets them. The seller accepts or overrides, and publishes."
-
-### 5. The agent declines a miss (1:25–1:50)
-
-**On screen:** Claude Desktop with the Sliver MCP connected. Type:
-
-> Find air-cargo rates from Changi (SIN) to Frankfurt (FRA), with origin, destination and usd_per_kg columns. Budget $5.
-
-Expand the tool calls: `sliver_search`, then `sliver_evaluate`. The recommendation is `look_elsewhere`, and Claude says Sliver doesn't have this data and spends nothing.
-
-**Narration:** "This is the buyer's own agent, using the open-source Sliver MCP on the buyer's machine. Sliver doesn't have air-cargo rates, so the evaluation says look elsewhere, and the agent spends nothing rather than buying a near miss."
-
-### 6. The agent buys within budget (1:50–2:25)
-
-**On screen:** in the same chat, type:
-
-> Find weekly container spot rates from Singapore to Shanghai since September. Budget $5.
-
-Expand `sliver_evaluate` and check its arguments: a short `need` such as `weekly container spot rates Singapore to Shanghai`, with `time_start: "2026-09"` and `budget_usd: 5`. That gets `buy` for the SGSIN-CNSHA sliver ($1.50). If Claude passes the whole sentence as `need`, only 5 of its 11 terms appear in the listing (the evaluator needs 60%) and it answers `look_elsewhere`; rehearse, and if needed rephrase the prompt or name the arguments. Then `sliver_buy` with `budget_usd: 5`. Pause on the result: saved file path, SHA-256 verified, transaction hash and explorer link.
-
-**Narration:** "This one fits, and it costs a dollar fifty, inside the five-dollar budget. The MCP checks that the payment request matches the listing, then signs an XRPL payment locally. It pays Sliver's platform wallet, which keeps a ten percent fee and pays the seller every fifteen days; Sliver never sees the buyer's keys. The bytes it receives match the listed hash. Without a budget, or over it, the MCP refuses before signing anything."
-
-### 7. Live timeline and earnings (2:25–2:45)
-
-**On screen:** switch to `/activity`. The purchase card is at the top. Open it to `/purchases/{id}` and scroll the steps as the page labels them: "402 Payment Required", "Signed payment received", "Verified by the facilitator", "Data integrity checked", "Submitted to the XRP Ledger", "Settled", "Validated on the ledger", "Data delivered", each with its time.
-
-Then switch to the `/sell/insights` tab: without a reload, the Balance shows $1.35 owed to the seller with the next payout date, and the $1.50 purchase is under Earnings with Sliver's $0.15 fee and its transaction link.
-
-**Narration:** "Every step of the x402 flow appears live: the 402 challenge, the signed payment, facilitator verification, Sliver's own integrity check, settlement, and Sliver's independent check of the ledger before it delivers. And the seller sees what Sliver owes them, and when it pays out, as soon as the sale lands."
-
-### 8. On chain (2:45–3:00)
-
-**On screen:** click the transaction link on the timeline. On testnet.xrpl.org, show the Payment from the buyer to Sliver's platform wallet, the delivered amount, the `InvoiceID` field and the validated result.
-
-**Narration:** "And here it is on the XRP Ledger: a Payment from the agent's wallet to Sliver, bound to the invoice; Sliver pays the seller on the next payout. Sliver: data sold in slices to agents, settled with x402 on XRPL."
+If there is time, or as a separate short clip: ask "Find air-cargo rates from Changi (SIN) to Frankfurt (FRA) per kg. Budget $5." `sliver_evaluate` answers `look_elsewhere` and the agent says Sliver doesn't have it and spends nothing. `make demo` runs the same check on every run.
 
 ## Criteria coverage
 
 | Criterion | Scenes |
 |---|---|
-| Reachability | 2, 5 (MCP in Claude Desktop) |
-| Creativity: AI-native, Starter Kit, x402 | 1, 3, 4, 6 |
-| Feasibility | 4, 7, 8 |
-| Technical depth: XRPL, x402, agents, security, safeguards | 3, 5, 6, 8 |
-| UX: agent actions, payments, on-chain | 3, 7, 8 |
+| Reachability | 2–6: an off-the-shelf agent (Claude Desktop) with the open-source MCP; no Sliver account, API key or sign-up |
+| Creativity: AI-native | 3, 4, 7: the agent decides it needs data, evaluates fit and quotes a custom slice; Sliver cuts and prices the slice on request |
+| Creativity: XRPL AI Starter Kit + x402 | 6: x402 v2 `exact` on XRPL Testnet, settled through t54's Starter Kit facilitator |
+| Feasibility | 5, 8: a $2.15 sale instead of a $19 bundle, a 10% platform fee, seller payouts every 15 days |
+| Technical depth: XRPL, x402, agents, safeguards | 4, 6, 9: challenge checked before signing, local signing, SHA-256 check, Sliver's independent ledger re-check, `InvoiceID` binding |
+| UX: agent actions, payments, on-chain | 5, 6, 8, 9: the quote and the human's yes, the live timeline, the seller's balance, the explorer |
 | Builder feedback | Not in the video; see [BUILDER_FEEDBACK.md](BUILDER_FEEDBACK.md) |
+
+## What the product does not do yet
+
+Say these plainly if asked, and don't imply otherwise on screen:
+
+- **Payouts are not automated.** The seller's balance and next payout date are real records, but nothing pays sellers out yet; it would be done by hand from the platform wallet ([ADR 0005](adr/0005-platform-collection-and-payouts.md)).
+- **Sliver holds the funds between a sale and the payout** (Testnet XRP only). Mainnet would need custody, KYC/AML and money-transmission work first.
+- **The data is synthetic,** including the port throughput and operating costs.
+- **The agent's spending permission is its own setting,** the MCP's budget and caps plus the project instructions. Sliver has no buyer accounts and never decides to spend.
+- **Claude chooses its own tool arguments.** The rehearsal numbers hold for the arguments above; other periods or filters give other prices.
 
 ## Open questions for the team
 
-- **Scene 6 prompt:** settle the exact wording in rehearsal so Claude's `sliver_evaluate` call gets `buy` (see the scene).
-- **Seller CSV for scene 2:** which dataset? It must not duplicate a seeded one, it should be accepted automatically, and it should slice into a few slivers. Its category also shapes scene 4: with at least two published comparables in the same category (the seeded freight rates, for example), the base comes from the catalog and the range is narrower; otherwise a fixed category base is used.
-- **Explorer:** the timeline links to testnet.xrpl.org. Confirm that the `InvoiceID` field is easy to find on that page, or zoom in during editing.
-- **Agent note:** the API accepts an `X-Sliver-Agent-Note` header and shows it on the timeline, but the Sliver MCP doesn't send one yet, so no note appears in scene 7.
-- **Length:** the shot list adds up to 3:00 exactly. If the pipeline or settlement is slow on the day, speed up scenes 3 and 6 in editing rather than cutting scene 8.
+- **Scene 3:** which public sources Claude actually cites varies. Rehearse and keep whatever it finds, as long as the narration doesn't claim specific numbers.
+- **Scene 7:** a written one-page estimate or an artifact dashboard? A dashboard is more visual but takes longer to generate; speed it up in editing.
+- **Explorer:** confirm that the `InvoiceID` field is easy to find on testnet.xrpl.org, or zoom in during editing.
+- **Length:** the shot list adds up to 3:00. If settlement or Claude is slow on the day, speed up scenes 3, 4 and 6 in editing rather than cutting scene 9.

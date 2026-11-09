@@ -61,8 +61,11 @@ smoke-testnet:
 	$(COMPOSE) run --rm -v $(CURDIR)/.env:/repo/.env:ro api python -m sliver_api.payments.smoke /repo/.env http://api:8000
 
 # The whole story on XRPL Testnet: seller upload, pipeline, valuation and publish, then the Sliver
-# MCP's buyer code for a question Sliver can't answer and one it buys. Writes the validated
-# transactions into README.md between the demo-tx markers. Never resets or deletes data.
+# MCP's buyer code for a question Sliver can't answer, one it buys, and a custom slice of the
+# seeded port-cost table it quotes and buys after a scripted "yes", all within a $5 budget.
+# Buyers pay Sliver's platform wallet; the seller's credit (gross, fee, net) is checked on the
+# seller's insights. Writes the validated transactions into README.md between the demo-tx markers.
+# Never resets or deletes data.
 # `wallets` sets payout addresses on the seeded sellers, so it runs after `seed`, also under -j.
 demo:
 	$(MAKE) seed

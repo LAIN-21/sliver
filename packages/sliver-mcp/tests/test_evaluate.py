@@ -132,6 +132,48 @@ def test_a_sliver_much_larger_than_the_need_suggests_a_custom_slice_of_the_full_
     assert "sliver_quote_slice" in report["summary"]
 
 
+def other_lane(value: str) -> dict:
+    """LANE's twin for another lane: same metadata, a different value of the slice column."""
+    twin = copy.deepcopy(LANE)
+    twin["id"] = f"6666666{len(value)}-6666-4666-8666-666666666666"
+    for field in ("title", "description"):
+        twin[field] = LANE[field].replace("SGSIN-CNSHA", value)
+    twin["coverage"]["slice"] = {**LANE["coverage"]["slice"], "value": value}
+    return twin
+
+
+def test_a_custom_slice_keeps_every_category_when_the_need_names_none():
+    """Slivers for several values of the slice column fit the need equally well (a need for
+    "spot rates from Singapore" says nothing about the lane), so the slice is not narrowed to the
+    one that sorts first."""
+    listings = [LANE, other_lane("SGSIN-VNSGN"), FULL_RATES]
+    report = run(NEED, listings, time_start="2026-10-19", time_end="2026-10-26", budget_minor=2000)
+    assert report["candidates"][0]["score"] == report["candidates"][1]["score"]
+    assert report["custom_slice"]["resource_id"] == FULL_RATES["id"]
+    assert report["custom_slice"]["where"] is None
+    # A need that singles out one lane still keeps it.
+    named = run(NEED + " SGSIN-CNSHA", listings, time_start="2026-10-19", time_end="2026-10-26",
+                budget_minor=2000)  # fmt: skip
+    assert named["best"] == LANE["id"] and named["custom_slice"]["where"] == {"lane": "SGSIN-CNSHA"}
+
+
+def test_a_custom_slice_comes_from_the_best_slivers_own_table():
+    """Another sliceable table may rank higher (it is cheaper, say), but the slice is cut from the
+    full dataset the best sliver came from: the one with its columns and seller."""
+    decoy = {
+        **copy.deepcopy(FULL_RATES),
+        "id": "77777777-7777-4777-8777-777777777777",
+        "title": "Container spot freight rates from Singapore, daily",
+        "columns": [{"name": "date", "type": "date"}, {"name": "usd_per_container", "type": "decimal"}],
+        "price": {"amount_minor": 800, "currency": "USD"},  # ranks between LANE and FULL_RATES
+    }
+    report = run(NEED, [LANE, decoy, FULL_RATES], required_terms=["CNSHA"], time_start="2026-10-19",
+                 time_end="2026-10-26", budget_minor=2000)  # fmt: skip
+    assert [c["resource_id"] for c in report["candidates"]] == [LANE["id"], decoy["id"], FULL_RATES["id"]]
+    assert report["custom_slice"]["resource_id"] == FULL_RATES["id"]
+    assert report["custom_slice"]["where"] == {"lane": "SGSIN-CNSHA"}
+
+
 def test_no_custom_slice_is_suggested_when_the_sliver_fits_or_nothing_offers_one():
     close = run(NEED, [LANE, FULL_RATES], time_start="2026-08", time_end="2026-10", budget_minor=2000)
     assert close["candidates"][0]["need_share"] > 0.5 and close["custom_slice"] is None

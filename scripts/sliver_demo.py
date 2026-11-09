@@ -4,11 +4,16 @@
 2. A demo seller signs in and uploads a fresh synthetic table (examples/demo/generate.py).
 3. The acceptance pipeline runs; the demo waits for its decision.
 4. The seller takes the suggested prices, picks a few public sample rows and publishes.
-5. A scripted buyer uses the Sliver MCP's own code (catalog search, the deterministic evaluator
-   and the budget-capped Buyer that signs locally) for two questions: one Sliver cannot answer
-   (look_elsewhere: nothing is signed) and one it can (bought on XRPL Testnet within $5).
-6. Every transaction is read back from XRPL Testnet. Only validated, successful Payments from
-   the buyer to the seller are written into README.md, between the demo-tx markers.
+5. A scripted buyer uses the Sliver MCP's own code (catalog search, the deterministic evaluator,
+   the custom-slice quote and the budget-capped Buyer that signs locally) for three questions,
+   each with a $5 budget: one Sliver cannot answer (look_elsewhere: nothing is signed), one a
+   sliver of the fresh upload answers, and one about running a port business in Singapore, for
+   which it quotes a custom slice of the seeded operating-cost table, shows the quote, and buys
+   it only after a scripted "yes" within the budget.
+6. Every purchase pays Sliver's platform wallet (ADR 0005). The seller's insights must show each
+   sale credited to the seller: the gross, Sliver's fee and the net owed at the next payout.
+7. Every transaction is read back from XRPL Testnet. Only validated, successful Payments from
+   the buyer to Sliver's platform wallet are written into README.md, between the demo-tx markers.
 
 It runs in the API container (see the Makefile) against the running stack. Nothing is reset or
 deleted: each run uploads a new, uniquely seeded table, so the demo can be re-run. Passwords
@@ -36,6 +41,7 @@ from sliver_mcp.api import ApiError, SliverApi
 from sliver_mcp.buyer import Buyer, Refused, XrplSigner
 from sliver_mcp.config import Config, usd_to_minor
 from sliver_mcp.evaluate import evaluate
+from sliver_mcp.quote import quote_summary
 from sliver_mcp.store import Store
 from sliver_x402 import TESTNET, TESTNET_RPC_URLS, PaymentRejected, check_rpc_url, explorer_url
 
@@ -45,7 +51,9 @@ END = "<!-- demo-tx:end -->"
 DEMO_SELLER = "strait-line-data@sliver.local"
 DEMO_REVIEWER = "reviewer@sliver.local"
 BUYER_SEED_VAR = "SLIVER_DEMO_BUYER_SEED"
+PLATFORM_ADDRESS_VAR = "SLIVER_PLATFORM_ADDRESS"  # an address, not a secret; never the seed
 BUDGET_USD = 5
+STEPS = 9
 PUBLIC_SAMPLE_ROWS = 3
 DECIDED = frozenset({"accepted", "review", "rejected", "published"})
 STEP_DONE = frozenset({"passed", "warning", "failed", "skipped"})
@@ -89,43 +97,78 @@ def xrp(drops: int) -> str:
     return f"{drops / 1_000_000:,.6f}".rstrip("0").rstrip(".")
 
 
+def usd(minor: int) -> str:
+    return f"${minor / 100:.2f}"
+
+
+def credit_text(credit: dict) -> str:
+    """How one sale is credited to the seller: gross, Sliver's fee and the net owed."""
+    return (
+        f"{usd(credit['gross_minor'])} − {usd(credit['fee_minor'])} Sliver fee "
+        f"({credit['fee_bps'] / 100:g}%) = {usd(credit['net_minor'])} net, "
+        f"owed at the {credit['next_payout_date']} payout"
+    )
+
+
+def answer_text(answer: dict) -> str:
+    if answer["tx_hash"] is None:
+        return f"`{answer['recommendation']}`: nothing was signed or spent."
+    paid = (
+        f"for {usd(answer['price_minor'])}: paid to Sliver's platform wallet, delivered and SHA-256-verified."
+    )
+    quote = answer.get("quote")
+    if quote is None:
+        return f"`{answer['recommendation']}` “{md(answer['title'])}” {paid}"
+    return (
+        f"`sliver_evaluate` suggested a custom slice; `sliver_quote_slice` quoted "
+        f"{quote['rows']:,} rows × {quote['column_count']} columns of “{md(quote['parent_title'])}” "
+        f"({md(quote['covers'])}) for {usd(quote['price_minor'])} ({xrp(quote['amount_drops'])} XRP). "
+        f"The scripted human said yes, and the buyer bought it {paid}"
+    )
+
+
 def render_block(run: dict[str, Any]) -> str:
     """The README block for one demo run. Every number comes from the run and the ledger."""
+    platform = run["platform_address"]
     lines = [
         f"_Written by `make demo` on {run['finished_at']} (run `{run['run_id']}`). "
         f"Each transaction was read back from XRPL Testnet (`{run['rpc_host']}`): a validated "
-        "`tesSUCCESS` Payment from the buyer's wallet to Sliver's platform wallet, which pays the "
-        "seller their net on the next payout (ADR 0005). "
+        "`tesSUCCESS` Payment from the buyer's wallet to Sliver's platform wallet "
+        f"[`{platform}`]({ACCOUNT_URL.format(platform)}). Sliver recorded its fee and the seller's "
+        "net on each sale; the net is owed to the seller and paid out on the 1st and 16th of each "
+        "month (UTC; payouts are not automated yet, see ADR 0005). "
         "Re-run `make demo` to replace this block; do not edit it by hand._",
         "",
-        "| Transaction | Ledger | Amount | Buyer → Sliver platform | Sliver |",
-        "|---|---|---|---|---|",
+        "| Transaction | Ledger | Paid by the buyer | Buyer → Sliver's platform wallet | Sliver "
+        "| Credited to the seller |",
+        "|---|---|---|---|---|---|",
     ]
     for tx in run["transactions"]:
         lines.append(
             f"| [`{tx['hash']}`]({explorer_url(tx['hash'])}) | {tx['ledger_index']} "
-            f"| {xrp(tx['delivered_drops'])} XRP (${tx['price_minor'] / 100:.2f}) "
+            f"| {xrp(tx['delivered_drops'])} XRP ({usd(tx['price_minor'])}) "
             f"| [`{tx['account']}`]({ACCOUNT_URL.format(tx['account'])}) → "
             f"[`{tx['destination']}`]({ACCOUNT_URL.format(tx['destination'])}) "
-            f"| {md(tx['title'])} |"
+            f"| {md(tx['title'])} | {md(tx['seller'])}: {credit_text(tx['credit'])} |"
         )
     lines += [
         "",
         f"In this run the demo seller uploaded “{md(run['dataset_title'])}” ({run['dataset_rows']} rows). "
         f"It was {run['acceptance']} after the pipeline's checks (AI review: {md(run['review_engine'])}), "
         f"and the seller published {run['published']} slivers at their suggested prices. "
-        f"The buyer then asked two questions with a ${BUDGET_USD} budget, using the Sliver MCP's "
-        "own search, evaluator and budget-capped buyer:",
+        f"The buyer then asked {len(run['answers'])} questions with a ${BUDGET_USD} budget each, using "
+        "the Sliver MCP's own search, evaluator, custom-slice quote and budget-capped buyer:",
         "",
     ]
     for number, answer in enumerate(run["answers"], start=1):
-        outcome = (
-            f"`{answer['recommendation']}`: nothing was signed or spent."
-            if answer["tx_hash"] is None
-            else f"`{answer['recommendation']}` “{md(answer['title'])}” for "
-            f"${answer['price_minor'] / 100:.2f}: paid, delivered and SHA-256-verified."
-        )
-        lines.append(f"{number}. “{md(answer['ask'])}” → {outcome}")
+        lines.append(f"{number}. “{md(answer['ask'])}” → {answer_text(answer)}")
+    balance = run["balance"]
+    lines += [
+        "",
+        f"Afterwards the seller's balance on `/sell/insights` showed {usd(balance['owed_minor'])} owed "
+        f"by Sliver across {balance['sales_owed']} sales, with the next payout on "
+        f"{balance['next_payout_date']}.",
+    ]
     return "\n".join(lines)
 
 
@@ -259,7 +302,7 @@ def say(text: str = "") -> None:
 
 def step(number: int, title: str) -> None:
     say()
-    say(f"[{number}/7] {title}")
+    say(f"[{number}/{STEPS}] {title}")
 
 
 @dataclass(frozen=True)
@@ -271,6 +314,7 @@ class Question:
     time_start: str | None = None
     time_end: str | None = None
     max_age_days: int | None = None
+    reason: str | None = None  # what the agent tells Sliver (X-Sliver-Agent-Note), when it buys
 
 
 def last_month(today: date) -> date:
@@ -303,8 +347,27 @@ def questions(today: date) -> tuple[Question, Question]:
         expect="buy",
         time_start=f"{month:%Y-%m}",
         time_end=f"{month:%Y-%m}",
+        reason=f"Daily Singapore anchorage waits by vessel type for {month:%B %Y}",
     )
     return miss, hit
+
+
+# The seeded operating-cost table (examples/datasets, #43) covers 2024-11 to 2026-10. The story's
+# founder needs today's costs across every category, not two years of one category: a custom
+# slice of the latest three months of the whole table.
+PORT_COSTS = Question(
+    ask=(
+        "I'm planning to start a port logistics company in Singapore. What does it cost to run one "
+        "now: terminal handling, port dues, warehouse rent, trucking, labour and customs brokerage, "
+        f"for August to October 2026? Budget ${BUDGET_USD}."
+    ),
+    need="Singapore port logistics operating costs",
+    required_columns=("month", "cost_category", "item", "sgd_amount", "usd_amount"),
+    expect="buy",
+    time_start="2026-08",
+    time_end="2026-10",
+    reason="Current Singapore port-business operating costs to estimate a new company's running costs",
+)
 
 
 # --- the story ----------------------------------------------------------------------------
@@ -335,8 +398,8 @@ class Demo:
         dataset = self.wait_for_decision(dataset)
         published = self.publish(dataset)
         answers, transactions = self.buy_questions()
-        self.seller_view(transactions)
-        self.record(dataset, published, answers, transactions)
+        balance = self.seller_view(transactions)
+        self.record(dataset, published, answers, transactions, balance)
 
     def preflight(self) -> None:
         step(1, "Preflight: Testnet only, stack healthy, README block present")
@@ -352,6 +415,10 @@ class Demo:
             )
         if not self.secret(BUYER_SEED_VAR):
             raise DemoError(f"{BUYER_SEED_VAR} is missing from .env; run `make wallets`.")
+        self.platform = self.secret(PLATFORM_ADDRESS_VAR)
+        if not self.platform:
+            raise DemoError(f"{PLATFORM_ADDRESS_VAR} is missing from .env; run `make wallets`.")
+        say(f"  buyers pay Sliver's platform wallet {self.platform} (ADR 0005)")
         engine = (
             "Claude" if os.environ.get("ANTHROPIC_API_KEY") else "offline fallback (no ANTHROPIC_API_KEY)"
         )
@@ -359,13 +426,14 @@ class Demo:
 
     def upload(self) -> dict:
         step(2, f"Seller signs in as {DEMO_SELLER} and uploads a fresh dataset")
-        checked(
+        account = checked(
             self.seller.post(
                 "/api/auth/login",
                 json={"email": DEMO_SELLER, "password": self.secret("SLIVER_SELLER_PASSWORD")},
             ),
             "Seller sign-in (check SLIVER_SELLER_PASSWORD, then `make seed`)",
         )
+        self.seller_name = ((account or {}).get("user") or {}).get("display_name") or DEMO_SELLER
         generator = load_generator(Path(self.args.generator))
         data = generator.generate(self.run_id, self.today)
         title = f"Singapore anchorage waiting times, daily (demo run {self.run_id})"
@@ -510,16 +578,16 @@ class Demo:
             f"question, caps ${config.max_purchase_minor / 100:.0f} per purchase and "
             f"${config.daily_cap_minor / 100:.0f} per day. It signs locally; Sliver never sees the key."
         )
-        answers, transactions = [], []
+        answers = []
         for number, question in enumerate(questions(self.today), start=5):
             step(number, f"Buyer asks: {question.ask}")
-            answer = self.ask(api, buyer, question)
-            answers.append(answer)
-            if answer["tx_hash"]:
-                transactions.append(answer)
-        return answers, transactions
+            answers.append(self.ask(api, buyer, question))
+        step(7, f"Buyer asks: {PORT_COSTS.ask}")
+        answers.append(self.ask_for_slice(api, buyer, config.drops_per_usd, PORT_COSTS))
+        return answers, [answer for answer in answers if answer["tx_hash"]]
 
-    def ask(self, api: SliverApi, buyer: Buyer, question: Question) -> dict:
+    def search_and_evaluate(self, api: SliverApi, question: Question) -> dict:
+        """sliver_search, then sliver_evaluate over the same results, as the MCP does."""
         try:
             found = api.search(q=question.need, limit=20)  # what sliver_evaluate searches
         except ApiError as error:
@@ -538,15 +606,19 @@ class Demo:
             budget_minor=usd_to_minor(BUDGET_USD, "budget_usd"),
         )
         say(f"  sliver_evaluate → {report['recommendation']}: {report['summary']}")
+        if report["recommendation"] != question.expect:
+            raise DemoError(
+                f"Expected {question.expect!r} for this question, got {report['recommendation']!r}."
+            )
+        return report
+
+    def ask(self, api: SliverApi, buyer: Buyer, question: Question) -> dict:
+        report = self.search_and_evaluate(api, question)
         best = next((c for c in report["candidates"] if c["resource_id"] == report["best"]), None)
         if best is None and report["candidates"]:
             say(
                 f"    closest: “{report['candidates'][0]['title']}”: "
                 f"{'; '.join(report['candidates'][0]['reasons'])}"
-            )
-        if report["recommendation"] != question.expect:
-            raise DemoError(
-                f"Expected {question.expect!r} for this question, got {report['recommendation']!r}."
             )
         answer = {
             "ask": question.ask,
@@ -558,8 +630,74 @@ class Demo:
         if report["recommendation"] != "buy":
             say("  nothing signed, nothing spent")
             return answer
+        return {**answer, **self.purchase(buyer, best["resource_id"], question.reason)}
+
+    def ask_for_slice(self, api: SliverApi, buyer: Buyer, drops_per_usd: int, question: Question) -> dict:
+        """The agent-initiative story: the evaluator says the pre-cut slivers cover much more than
+        the need, the agent quotes a custom slice (free, never spends), tells its human the price
+        for N rows × M columns, and buys only after a yes within the human's budget."""
+        report = self.search_and_evaluate(api, question)
+        suggestion = report.get("custom_slice")
+        if not suggestion:
+            raise DemoError("sliver_evaluate suggested no custom slice for the port-costs question.")
+        say(
+            f"  custom slice suggested: {suggestion['title']!r}, {suggestion['time_start']} to "
+            f"{suggestion['time_end']}, where {suggestion['where'] or 'every category'}"
+        )
         try:
-            result = buyer.buy(best["resource_id"], BUDGET_USD)
+            status, body = api.quote_slice(
+                suggestion["resource_id"],
+                suggestion["time_start"],
+                suggestion["time_end"],
+                suggestion["where"],
+            )
+        except ApiError as error:
+            raise DemoError(str(error)) from None
+        budget_minor = usd_to_minor(BUDGET_USD, "budget_usd")
+        quote = quote_summary(status, body, budget_minor, drops_per_usd)
+        if quote["status"] != "quoted":
+            raise DemoError(f"sliver_quote_slice refused ({quote.get('code')}): {quote.get('message')}")
+        if quote.get("warning"):
+            raise DemoError(quote["warning"])
+        say(f"  sliver_quote_slice → {quote['resource_id']} (nothing spent): {quote['summary']}")
+        offer = quote["summary"].split(" Nothing has been spent")[0]
+        say(f"  agent to its human: “I found data worth buying. {offer} Agree?”")
+        price_minor = round(quote["price_usd"] * 100)
+        if not quote.get("within_budget"):
+            raise DemoError(
+                f"The quote ({usd(price_minor)}) is over the ${BUDGET_USD} budget; "
+                "the scripted human approves only quotes within it."
+            )
+        say(f"  human (scripted for make demo): “Yes, buy it.” (within the ${BUDGET_USD} budget)")
+        time = (quote.get("coverage") or {}).get("time") or {}
+        where = (quote.get("filter") or {}).get("where") or {}
+        covers = "; ".join(
+            ([f"{time.get('column')} {time.get('start')} to {time.get('end')}"] if time else [])
+            + [f"{column} {value}" for column, value in where.items()]
+        )
+        bought = self.purchase(buyer, quote["resource_id"], question.reason)
+        if bought["price_minor"] != price_minor:
+            raise DemoError(
+                f"Bought for {usd(bought['price_minor'])}, but the quote said {usd(price_minor)}."
+            )
+        return {
+            "ask": question.ask,
+            "recommendation": report["recommendation"],
+            **bought,
+            "quote": {
+                "rows": quote["rows"],
+                "column_count": quote["column_count"],
+                "parent_title": (quote.get("parent") or {}).get("title"),
+                "covers": covers or "the whole table",
+                "price_minor": price_minor,
+                "amount_drops": int(quote["payment"]["amount_drops"]),
+            },
+        }
+
+    def purchase(self, buyer: Buyer, resource_id: str, reason: str | None) -> dict:
+        """sliver_buy within the budget: it pays Sliver's platform wallet, never the seller."""
+        try:
+            result = buyer.buy(resource_id, BUDGET_USD, reason=reason)
         except Refused as error:
             paid = (
                 f" Payment {error.paid['tx_hash']} left the wallet: {error.paid['explorer_url']}"
@@ -571,17 +709,23 @@ class Demo:
             raise DemoError(
                 f"The purchase was not delivered intact ({result['status']}): {result['explorer_url']}"
             )
+        if result["pay_to"] != self.platform:
+            raise DemoError(
+                f"{result['tx_hash']} paid {result['pay_to']}, not Sliver's platform wallet {self.platform}."
+            )
         receipt = result.get("receipt") or {}
         say(
             f"  sliver_buy → paid {result['amount_xrp']} XRP (${result['price_usd']:.2f}) "
-            f"to {result['pay_to']}, {result['bytes']:,} bytes, SHA-256 matches the listing"
+            f"to Sliver's platform wallet {result['pay_to']}, {result['bytes']:,} bytes, "
+            "SHA-256 matches the listing"
         )
+        if reason:
+            say(f"  agent note on the timeline: {reason}")
         say(f"  transaction {result['tx_hash']}")
         say(f"  explorer    {result['explorer_url']}")
         if receipt.get("id"):
             say(f"  timeline    {self.web_url}/purchases/{receipt['id']}")
         return {
-            **answer,
             "tx_hash": result["tx_hash"],
             "resource_id": result["resource_id"],
             "title": result["title"],
@@ -591,25 +735,53 @@ class Demo:
             "pay_to": result["pay_to"],
         }
 
-    def seller_view(self, transactions: list[dict]) -> None:
+    def seller_view(self, transactions: list[dict]) -> dict:
+        """Each sale as the seller sees it: gross, Sliver's fee and the net owed at the next payout."""
+        step(8, f"The seller's side: {DEMO_SELLER} on /sell/insights")
         insights = checked(self.seller.get("/api/seller/insights"), "Seller insights")
-        hashes = {item["transaction"]["hash"].upper() for item in insights["earnings"]["items"]}
+        items = {item["transaction"]["hash"].upper(): item for item in insights["earnings"]["items"]}
+        balance = insights.get("balance") or {}
         for tx in transactions:
-            if tx["tx_hash"].upper() not in hashes:
+            item = items.get(tx["tx_hash"].upper())
+            if item is None:
                 raise DemoError(f"{tx['tx_hash']} is missing from the seller's earnings.")
-        earnings, balance = insights["earnings"], insights.get("balance") or {}
-        owed = (balance.get("owed") or {}).get("usd_minor", 0)
+            fee, net = item.get("platform_fee"), item.get("net") or {}
+            if fee is None or item.get("pay_to") != self.platform:
+                raise DemoError(f"{tx['tx_hash']} was not collected by Sliver's platform wallet.")
+            tx["seller"] = self.seller_name
+            tx["credit"] = {
+                "gross_minor": item["amount"]["usd_minor"],
+                "fee_bps": fee["bps"],
+                "fee_minor": fee["usd_minor"],
+                "net_minor": net["usd_minor"],
+                "payout": (item.get("payout") or {}).get("status"),
+                "next_payout_date": balance.get("next_payout_date"),
+            }
+            if tx["credit"]["fee_minor"] + tx["credit"]["net_minor"] != tx["credit"]["gross_minor"]:
+                raise DemoError(f"{tx['tx_hash']}: Sliver's fee and the seller's net do not add up.")
+            say(f"  {tx['title']}")
+            say(f"    {credit_text(tx['credit'])} ({tx['credit']['payout']})")
+        owed = balance.get("owed") or {}
+        summary = {
+            "owed_minor": owed.get("usd_minor", 0),
+            "sales_owed": balance.get("sales_owed", 0),
+            "next_payout_date": balance.get("next_payout_date", "?"),
+        }
         say(
-            f"  seller insights: {earnings['purchases']} delivered purchases, "
-            f"${earnings['usd_minor'] / 100:.2f} paid by buyers to Sliver, ${owed / 100:.2f} owed to the "
-            f"seller at the next payout ({balance.get('next_payout_date', '?')}) "
-            f"({self.web_url}/sell/insights)"
+            f"  balance: {usd(summary['owed_minor'])} owed by Sliver across {summary['sales_owed']} sales, "
+            f"next payout {summary['next_payout_date']} ({self.web_url}/sell/insights)"
         )
+        return summary
 
     def record(
-        self, dataset: dict, published: list[dict], answers: list[dict], transactions: list[dict]
+        self,
+        dataset: dict,
+        published: list[dict],
+        answers: list[dict],
+        transactions: list[dict],
+        balance: dict,
     ) -> None:
-        step(7, "Ledger check and README")
+        step(9, "Ledger check and README")
         if not transactions:
             raise DemoError("No transaction to record.")
         recorded = []
@@ -617,13 +789,23 @@ class Demo:
             facts = ledger_facts(read_ledger_tx(self.ledger, self.rpc_url, tx["tx_hash"]), tx["tx_hash"])
             if facts["destination"] != tx["pay_to"] or facts["delivered_drops"] != tx["amount_drops"]:
                 raise DemoError(f"{tx['tx_hash']} on the ledger does not match the purchase.")
+            if facts["destination"] != self.platform:
+                raise DemoError(f"{tx['tx_hash']} did not pay Sliver's platform wallet {self.platform}.")
             if facts["account"] != tx["payer"]:
                 raise DemoError(f"{tx['tx_hash']} was not sent by the demo buyer.")
             say(
                 f"  {facts['hash']}: validated in ledger {facts['ledger_index']}, tesSUCCESS, "
                 f"{xrp(facts['delivered_drops'])} XRP {facts['account']} → {facts['destination']}"
             )
-            recorded.append({**facts, "price_minor": tx["price_minor"], "title": tx["title"]})
+            recorded.append(
+                {
+                    **facts,
+                    "price_minor": tx["price_minor"],
+                    "title": tx["title"],
+                    "seller": tx["seller"],
+                    "credit": tx["credit"],
+                }
+            )
         review = next((s for s in dataset["steps"] if s["stage"] == "ai_review"), {})
         engine = (review.get("details") or {}).get("engine")
         run = {
@@ -641,6 +823,8 @@ class Demo:
             ),
             "published": len(published),
             "answers": answers,
+            "platform_address": self.platform,
+            "balance": balance,
         }
         text = self.readme.read_text(encoding="utf-8")
         updated = replace_block(text, render_block(run))
