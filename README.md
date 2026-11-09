@@ -120,7 +120,8 @@ The first command creates and faucet-funds a Testnet wallet in `~/.sliver/wallet
 |---|---|---|
 | `sliver_search` | Search the catalog (public metadata only) | No |
 | `sliver_inspect` | Full listing: columns, coverage, provenance, price, SHA-256 | No |
-| `sliver_evaluate` | Deterministic fit report: `buy`, `skip` or `look_elsewhere`, with reasons | No |
+| `sliver_evaluate` | Deterministic fit report: `buy`, `skip` or `look_elsewhere`, with reasons, and a custom-slice suggestion when the best sliver covers much more than the need | No |
+| `sliver_quote_slice` | Quote a custom slice: just the rows the need covers, priced per row, as an unlisted sliver to buy | No |
 | `sliver_buy` | Buy one sliver within a budget, verify its SHA-256, return tx hash and explorer link | Yes (Testnet XRP) |
 | `sliver_wallet` | Address, balance, last-24-hour spend (never the seed) | No |
 | `sliver_purchases` | Purchases made from this machine | No |
@@ -199,6 +200,7 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 - **Claude explains, never prices.** Claude gets only the computed numbers and the factor reasons (no rows, provenance or search texts) and writes the explanation ([`seller/pricing.py`](apps/api/sliver_api/seller/pricing.py), versioned prompt `valuation_explanation.v1`). If its text contains a number that isn't in its input, the call fails, or there is no API key, a template is used instead. Publishing never calls Claude.
 - **The seller decides.** On the dataset page, "Price and publish" shows each sliver's suggestion, range and a "Why?" breakdown. The seller accepts or overrides each price and publishes all slivers together (`GET /api/seller/datasets/{id}/valuation`, `POST /api/seller/datasets/{id}/publish`). Each published sliver keeps a private snapshot of its valuation.
 - **Opt-in sample rows.** Nothing from the table is public by default. The seller may make up to five rows public, and a row with any privacy-flagged value is refused. A sliver shows only the selected rows that belong to it.
+- **Custom slices.** A buyer's agent can ask for exactly the rows it needs from a full-dataset listing: a date range and/or one value of a category column (`GET /api/resources/{id}/slices`, the MCP's `sliver_quote_slice`). Sliver cuts them from the stored, hash-checked dataset into an unlisted sliver with its own SHA-256, priced *min(full price, max($0.10, full price ÷ rows × slice rows))*, so it never costs more than the full dataset and fewer rows never cost more. The seller's published price is the reference. It is bought through the same x402 path and paid to the same seller, and shows in the seller's earnings with a "custom slice" tag. Identical requests return the same sliver; slices under five rows, or identical to an existing sliver, are refused. Sellers can turn custom slices off when they publish.
 - **Insights.** `/sell/insights` (`GET /api/seller/insights`) shows the seller's earnings, with each delivered purchase linked to its Testnet transaction, updating live from the activity stream. It also lists unmet buyer demand (searches that found nothing in the last 30 days) next to the seller's matching slivers.
 
 ## AI in the loop
@@ -222,8 +224,8 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 
 | Suite | Covers | Run |
 |---|---|---|
-| API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, valuation (determinism, each factor's direction, publish, sample-row refusals, the explanation's number guard, insights), auth, activity feed | `make test` |
-| Buyer packages (`packages/`) and `make demo` (`scripts/tests`) | Every `sliver_buy` refusal (asserting nothing was signed), signed-transaction fields, fit evaluation, MCP protocol end to end; the demo's README block writer, Testnet guards, ledger checks, demo table and buyer questions | `cd packages && uv sync --all-packages && uv run pytest` |
+| API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, valuation (determinism, each factor's direction, publish, sample-row refusals, the explanation's number guard, insights), custom slices (filter validation, dedupe, pricing properties, unlisted, toggle, rate limit, x402 purchase), auth, activity feed | `make test` |
+| Buyer packages (`packages/`) and `make demo` (`scripts/tests`) | Every `sliver_buy` refusal (asserting nothing was signed), signed-transaction fields, fit evaluation and custom-slice suggestions, quotes that never spend, MCP protocol end to end; the demo's README block writer, Testnet guards, ledger checks, demo table and buyer questions | `cd packages && uv sync --all-packages && uv run pytest` |
 | Lint | Ruff for Python, TypeScript typecheck for the web app | `make lint` |
 
 [CI](.github/workflows/ci.yml) runs on every pull request: shellcheck, actionlint and Compose validation; API lint and tests against PostgreSQL; web typecheck and build; the buyer packages on Python 3.11 and 3.13; and the full containerized stack (`make install` twice without overwriting `.env`, all five services healthy, `make test` and `make lint` in containers, `make seed` twice, degraded health with storage stopped, volumes kept on stop). Tests never call the Claude API, a facilitator or the ledger. The real Testnet purchases are `make smoke-testnet` and `make demo`.
@@ -237,7 +239,7 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 | Creativity: XRPL AI Starter Kit + x402 | [Starter Kit integration](#xrpl-ai-starter-kit-integration); [ADR 0004](docs/adr/0004-x402-payments-on-xrpl.md) |
 | Feasibility | Direct-to-seller payments with no custody; the full seller loop from upload to explainable price, publication and live earnings; deterministic fallbacks without an API key; plain PostgreSQL job queue with no extra infrastructure ([ARCHITECTURE.md](docs/ARCHITECTURE.md)); [limitations](#limitations) stated openly |
 | Technical depth: XRPL and x402 | Ledger re-check ([`ledger_check.py`](apps/api/sliver_api/payments/ledger_check.py)), purchase flow ([`payments/service.py`](apps/api/sliver_api/payments/service.py)), our own x402 client ([`sliver-x402`](packages/sliver-x402/README.md)) |
-| Technical depth: agents | [`packages/sliver-mcp`](packages/sliver-mcp/README.md): six tools, server instructions for honest buying, the spending policy in [`buyer.py`](packages/sliver-mcp/src/sliver_mcp/buyer.py) |
+| Technical depth: agents | [`packages/sliver-mcp`](packages/sliver-mcp/README.md): seven tools, server instructions for honest buying, the spending policy in [`buyer.py`](packages/sliver-mcp/src/sliver_mcp/buyer.py) |
 | Technical depth: security, tests, safeguards | [Security and safeguards](#security-and-safeguards), deterministic pricing with a full breakdown ([`valuation.py`](apps/api/sliver_api/valuation.py)), [Tests and CI](#tests-and-ci), [transactions.md](docs/agents/transactions.md), [seller.md](docs/agents/seller.md), [catalog.md](docs/agents/catalog.md) |
 | UX: agent actions, payments, on-chain | Live `/activity` feed and `/purchases/{id}` timeline (402 → signature → verified → integrity → settlement → ledger validated → delivered, with explorer links); seller dataset page with each pipeline stage, Claude's listing and the "Price and publish" breakdown; `/sell/insights` with live earnings and tx links; [demo script](docs/DEMO.md) |
 | Builder feedback | [docs/BUILDER_FEEDBACK.md](docs/BUILDER_FEEDBACK.md) |
@@ -257,7 +259,8 @@ Sliver is **the marketplace on the other side**: the place a buying agent like L
 ## Limitations
 
 - **Testnet only.** Testnet XRP has no value. The USD-to-XRP rate is a fixed, disclosed demo rate, not a market price. There is no RLUSD pricing, marketplace fee, payout or refund flow. A settlement that fails the ledger re-check is marked failed and refunded by hand.
-- **Pricing is a demo calibration.** The category bases and factor weights in the valuation formula are not market research. Demand matching is term-based. Prices can't be changed after publishing.
+- **Pricing is a demo calibration.** The category bases and factor weights in the valuation formula are not market research. Demand matching is term-based. Prices can't be changed after publishing. Custom slices are priced linearly per row, so one can cost less than a seller's pre-cut sliver of nearly the same rows.
+- **Custom slices in the x402 directory.** Custom slices are published (that is how the unchanged payment path sells them), so `GET /.well-known/x402` lists them alongside regular slivers, at most 50 per dataset.
 - **No hosted deployment.** Everything runs locally in Docker with development images.
 - **The facilitator is best effort with no SLA.** The real Testnet purchase is not part of CI. The x402.org facilitator can be configured with one setting, but only its `/verify` has been tested with our payments.
 - **Payee pinning.** The public catalog does not publish sellers' payment addresses yet, so the MCP trusts the payee on the first purchase from a seller and pins it after that.

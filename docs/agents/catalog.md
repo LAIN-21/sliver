@@ -9,3 +9,5 @@ Additional constraints for public discovery (`apps/api/sliver_api/catalog`, the 
 - Search events record what was searched, the filters and the outcome, never who searched. Do not add IP addresses, user agents or account identifiers to them.
 - Keep the leak test in `apps/api/tests/test_catalog.py` passing, and extend it when the public schema grows.
 - Pagination stays capped (`MAX_PAGE_SIZE`).
+- Buyer-defined custom slices (`resources.parent_id` set) are unlisted: keep them out of search, categories, demand matching and valuation comparables. They are served by id only, through the same allow-list plus `derived_from` (parent id and normalized filter).
+- Custom-slice quotes (`sliver_api/slices/`) reveal counts, coverage, price and SHA-256 only, through `catalog/public.py`'s `public_quote`. Filters may use only the time column the privacy scan did not flag and low-cardinality, non-personal category columns (the leak guard's rules); never make a privacy-flagged column filterable. Keep `tests/test_custom_slices.py` passing.
