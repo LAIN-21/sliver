@@ -95,6 +95,7 @@ function Publish({
 }) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<number[]>([]);
+  const [allowCustom, setAllowCustom] = useState(report.custom_slices.allowed);
   const [open, setOpen] = useState<string | null>(report.slivers[0]?.id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +122,7 @@ function Publish({
       const suggested = Object.fromEntries(
         report.slivers.flatMap((sliver) => (sliver.valuation ? [[sliver.id, sliver.valuation.suggested_price_minor]] : [])),
       );
-      onPublished(await publishDataset(report.dataset_id, prices, selected, suggested));
+      onPublished(await publishDataset(report.dataset_id, prices, selected, suggested, allowCustom));
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 409) {
         // The suggestions moved (new demand or comparables), or the dataset changed state: reload.
@@ -188,6 +189,23 @@ function Publish({
       </div>
 
       <SamplePicker report={report} selected={selected} onToggle={toggle} />
+
+      <label className="mt-5 flex items-start gap-3 rounded-lg border border-line p-3 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={allowCustom}
+          onChange={(event) => setAllowCustom(event.target.checked)}
+        />
+        <span>
+          <span className="font-medium">Allow custom slices</span>
+          <span className="mt-0.5 block text-muted">
+            Agents may ask for just the rows they need (a date range or one category value). Sliver cuts them from your
+            full dataset and prices them per row from your full-dataset price, never above it. You are paid directly, like
+            any sale. This choice is fixed once you publish.
+          </span>
+        </span>
+      </label>
 
       {error ? (
         <div className="mt-4">
@@ -388,6 +406,21 @@ function Published({ report }: { report: ValuationReport }) {
     <>
       <p className="mt-1 text-sm text-muted">
         These slivers are live in the catalog. Agents buy them with x402 and pay you directly on the XRP Ledger Testnet.
+      </p>
+      <p className="mt-2 text-sm">
+        Custom slices:{" "}
+        {report.custom_slices.allowed ? (
+          <>
+            <span className="font-medium">allowed</span>
+            <span className="text-muted">
+              {" "}
+              · {report.custom_slices.count.toLocaleString("en-US")} cut for buyers so far, priced per row from your
+              full-dataset price
+            </span>
+          </>
+        ) : (
+          <span className="font-medium">not offered</span>
+        )}
       </p>
       <ExplanationBox report={report} />
       {!report.payout_ready ? (

@@ -23,7 +23,16 @@ export type PublicResource = {
   // Rows the seller chose to make public when publishing (empty unless they selected some).
   sample_rows: string[][];
   published_at: string | null;
+  // Set on a buyer-defined custom slice: the full-dataset listing it was cut from and its filter.
+  derived_from: { id: string; filter: CustomSliceFilter } | null;
+  // Whether agents may quote custom slices of this (full-dataset) listing.
+  custom_slices: { available: boolean };
   relevance?: number;
+};
+
+export type CustomSliceFilter = {
+  time?: { column: string; start: string | null; end: string | null };
+  where?: Record<string, string>;
 };
 
 export type CatalogPage = { items: PublicResource[]; total: number; limit: number; offset: number };
@@ -148,6 +157,7 @@ export type SellerDatasetDetail = Omit<SellerDataset, "steps"> & {
     rights_statement?: string;
   };
   seller: { name: string };
+  allow_custom_slices: boolean;
   resources: PackagedResource[];
   review: ReviewOutcome | null;
 };
@@ -249,6 +259,8 @@ export type ValuationReport = {
   payout_ready: boolean;
   explanation: Explanation | null;
   slivers: SliverValuation[];
+  // Buyer-defined custom slices: whether the seller offers them and how many buyers have cut.
+  custom_slices: { allowed: boolean; count: number };
   sample: { max_rows: number; selected: number[]; header: string[]; candidates: SampleCandidate[] };
 };
 
@@ -262,7 +274,8 @@ export type DemandItem = {
 
 export type Earning = {
   payment_id: string;
-  resource: { id: string; title: string };
+  // custom_slice_of: the full-dataset listing a buyer-defined custom slice was cut from.
+  resource: { id: string; title: string; custom_slice_of: string | null };
   amount: { value: string; asset: string; usd_minor: number };
   network: string;
   payer: string | null;

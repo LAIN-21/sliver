@@ -33,6 +33,8 @@ function Insights() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const latest = useRef(0);
   const owned = useRef(new Set<string>());
+  // Custom slices are created after this page loads, so a delivery paid to this seller counts too.
+  const payout = useRef<string | null>(null);
   const loaded = useRef(false);
   const now = useNow();
 
@@ -42,6 +44,7 @@ function Insights() {
       .then((insights) => {
         if (request !== latest.current) return; // a newer reload is on its way
         owned.current = new Set(insights.resource_ids);
+        payout.current = insights.payout_address;
         loaded.current = true;
         setRefreshError(null);
         setState({ kind: "ready", insights });
@@ -65,7 +68,8 @@ function Insights() {
   const onEvent = useCallback(
     (event: ActivityEvent) => {
       // A new delivery of one of this seller's slivers (a replay charges nothing new).
-      if (event.type === "delivered" && event.detail !== "replay" && owned.current.has(event.resource.id)) load();
+      const mine = owned.current.has(event.resource.id) || (payout.current !== null && event.pay_to === payout.current);
+      if (event.type === "delivered" && event.detail !== "replay" && mine) load();
     },
     [load],
   );
@@ -130,6 +134,11 @@ function Insights() {
                     <Link to={`/resources/${item.resource.id}`} className="hover:underline">
                       {item.resource.title}
                     </Link>
+                    {item.resource.custom_slice_of ? (
+                      <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-muted">
+                        custom slice
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 tabular-nums whitespace-nowrap">
                     {formatPrice(item.amount.usd_minor)}{" "}
