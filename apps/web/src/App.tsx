@@ -5,6 +5,7 @@ import ActivityPage from "./pages/ActivityPage";
 import DatasetPage from "./pages/DatasetPage";
 import MarketplacePage from "./pages/MarketplacePage";
 import NotFoundPage from "./pages/NotFoundPage";
+import PurchasePage from "./pages/PurchasePage";
 import ResourcePage from "./pages/ResourcePage";
 import SellerLoginPage from "./pages/SellerLoginPage";
 import SellPage from "./pages/SellPage";
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="sell/upload" element={<UploadPage />} />
           <Route path="sell/datasets/:id" element={<DatasetPage />} />
           <Route path="activity" element={<ActivityPage />} />
+          <Route path="purchases/:id" element={<PurchasePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

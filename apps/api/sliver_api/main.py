@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import Engine
 from starlette.concurrency import run_in_threadpool
 
+from .activity.log import ActivityLog
+from .activity.routes import router as activity_router
 from .auth.routes import router as auth_router
 from .catalog.routes import router as catalog_router
 from .config import Settings, get_settings
@@ -53,10 +55,13 @@ def create_app(
     app.state.engine = engine
     app.state.sessions = make_session_factory(engine)
     app.state.store = store
-    app.state.purchases = PurchaseService(settings, store, facilitator, ledger)
+    app.state.purchases = PurchaseService(
+        settings, store, facilitator, ledger, activity=ActivityLog(app.state.sessions)
+    )
 
     app.include_router(catalog_router)
     app.include_router(payments_router)
+    app.include_router(activity_router)
     app.include_router(auth_router)
     app.include_router(seller_router)
     # Added last runs first: the Origin check, then body limits, then routing.

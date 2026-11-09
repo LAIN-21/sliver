@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 
 import { ApiError, getCategories, searchCatalog } from "../api";
 import PageHeader, { EmptyState } from "../components/PageHeader";
+import RecentPurchases from "../components/RecentPurchases";
 import ResourceCard from "../components/ResourceCard";
 import { formatCategory } from "../format";
 import type { CatalogPage, CategoryCount } from "../types";
@@ -83,6 +84,8 @@ export default function MarketplacePage() {
         Data that AI agents can buy by the slice. Listings show metadata only; the data itself is
         delivered after an x402 payment on the XRP Ledger.
       </PageHeader>
+
+      <RecentPurchases />
 
       <form onSubmit={submit} className="mb-6 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-[1fr_auto_auto_auto]">
         <label className="sr-only" htmlFor="q">

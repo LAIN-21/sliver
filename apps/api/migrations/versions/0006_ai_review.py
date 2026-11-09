@@ -1,7 +1,7 @@
 """AI review and acceptance: a reviewer's decision and reason on each dataset.
 
-Revision ID: 0005_ai_review
-Revises: 0004_seller_pipeline
+Revision ID: 0006_ai_review
+Revises: 0005_activity_events
 """
 
 from collections.abc import Sequence
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0005_ai_review"
-down_revision: str | None = "0004_seller_pipeline"
+revision: str = "0006_ai_review"
+down_revision: str | None = "0005_activity_events"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

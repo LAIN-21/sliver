@@ -1,6 +1,16 @@
 // Same-origin API client. In development Vite proxies /api to the FastAPI service.
 
-import type { Account, CatalogPage, CategoryCount, PublicResource, SellerDataset, SellerDatasetDetail } from "./types";
+import type {
+  Account,
+  ActivityFeed,
+  ActivityType,
+  CatalogPage,
+  CategoryCount,
+  PublicResource,
+  PurchaseTimeline,
+  SellerDataset,
+  SellerDatasetDetail,
+} from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -121,4 +131,24 @@ export function uploadDataset(form: FormData): Promise<SellerDataset> {
 export function reviewDataset(id: string, decision: "approve" | "reject", reason: string): Promise<SellerDatasetDetail> {
   const init = { method: "POST", body: JSON.stringify({ decision, reason }), headers: { "Content-Type": "application/json" } };
   return request<SellerDatasetDetail>(`/seller/datasets/${encodeURIComponent(id)}/review`, init);
+}
+
+export function getActivity(
+  options: { limit?: number; type?: ActivityType } = {},
+  signal?: AbortSignal,
+): Promise<ActivityFeed> {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+  if (options.type) params.set("type", options.type);
+  return request<ActivityFeed>(`/activity?${params}`, { signal });
+}
+
+export function getPurchase(id: string, signal?: AbortSignal): Promise<PurchaseTimeline> {
+  return request<PurchaseTimeline>(`/purchases/${encodeURIComponent(id)}`, { signal });
+}
+
+// Server-sent events; EventSource resumes from Last-Event-ID by itself after a drop.
+export function activityStreamUrl(after: number, paymentId?: string): string {
+  const params = new URLSearchParams({ after: String(after) });
+  if (paymentId) params.set("payment_id", paymentId);
+  return `/api/activity/stream?${params}`;
 }
