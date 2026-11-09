@@ -22,6 +22,8 @@ def resolve_test_database_url() -> str:
     if explicit:
         return explicit
     base = os.environ.get("DATABASE_URL")
+    if not base and os.environ.get("POSTGRES_HOST"):
+        base = Settings().database_url  # built from POSTGRES_* inside the containers
     if not base:
         pytest.exit("Set DATABASE_URL or TEST_DATABASE_URL; run tests with `make test`.", returncode=2)
     url = make_url(base)

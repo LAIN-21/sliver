@@ -3,7 +3,13 @@ name: sliver
 # Application containers reach PostgreSQL and MinIO on the Compose network; only the
 # loopback interface of the host is ever published.
 x-app-environment: &app-environment
-  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  # The API builds the database URL from these parts with proper escaping; an explicit
+  # DATABASE_URL in .env still takes precedence.
+  DATABASE_URL: ${DATABASE_URL:-}
+  POSTGRES_HOST: postgres
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  POSTGRES_DB: ${POSTGRES_DB}
   S3_ENDPOINT_URL: http://minio:9000
   S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
   S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
