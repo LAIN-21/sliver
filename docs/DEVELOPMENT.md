@@ -75,6 +75,14 @@ See [ADR 0004](adr/0004-x402-payments-on-xrpl.md). After `make seed` and `make w
 - `GET /api/receipts/{id}`: public receipt with the transaction hash and explorer link.
 - `GET /.well-known/x402`: machine-readable list of paid endpoints and prices.
 
+Buyer agents may send `X-Sliver-Agent-Note` with the data request: a short reason for the purchase (UTF-8, at most 200 characters; control and invisible characters are removed). It is public, shown on the activity feed and the purchase timeline, and never affects the payment.
+
+Live activity (public, no buyer secrets):
+
+- `GET /api/activity?limit=50&type=`: latest purchase events, newest first, plus a `cursor` for the stream.
+- `GET /api/activity/stream?after=&payment_id=`: server-sent events (`activity` per new event, `heartbeat` every 15 s when quiet). Resumes from `Last-Event-ID`; each connection ends after 5 minutes and the browser reconnects without missing events.
+- `GET /api/purchases/{id}`: one purchase's timeline (the id is the `X-Sliver-Receipt` value). The web app shows it at `/purchases/{id}`.
+
 Settings (all optional, see `.env.example`): `FACILITATOR_URL`, `XRPL_RPC_URL` (Testnet allow-list only) and `DROPS_PER_USD`.
 
 ## Working on the code

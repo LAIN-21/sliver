@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select
 
+from ..activity.log import sanitize_note
 from ..deps import DB
 from ..models import Payment, Resource, User
 from .service import Challenge, PurchaseError, PurchaseService
@@ -14,10 +15,17 @@ router = APIRouter(tags=["payments"])
 
 @router.get("/api/resources/{resource_id}/data", response_model=None)
 def resource_data(resource_id: Annotated[str, Path(max_length=36)], request: Request, db: DB) -> Response:
-    """Pay-per-request CSV delivery gated by x402 v2 on the XRP Ledger (HTTP 402)."""
+    """Pay-per-request CSV delivery gated by x402 v2 on the XRP Ledger (HTTP 402).
+
+    Optional `X-Sliver-Agent-Note`: the buying agent's reason, shown publicly on the activity
+    feed (UTF-8, at most 200 characters after sanitizing). It never affects the payment.
+    """
     service: PurchaseService = request.app.state.purchases
+    note = sanitize_note(request.headers.get("X-Sliver-Agent-Note"))
     try:
-        outcome = service.handle(db, resource_id, request.headers.get("PAYMENT-SIGNATURE"), str(request.url))
+        outcome = service.handle(
+            db, resource_id, request.headers.get("PAYMENT-SIGNATURE"), str(request.url), agent_note=note
+        )
     except PurchaseError as error:
         return JSONResponse(
             status_code=error.status, content={"error": {"code": error.code, "message": error.message}}

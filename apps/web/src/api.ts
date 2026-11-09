@@ -1,6 +1,6 @@
 // Same-origin API client. In development Vite proxies /api to the FastAPI service.
 
-import type { CatalogPage, CategoryCount, PublicResource } from "./types";
+import type { ActivityFeed, ActivityType, CatalogPage, CategoryCount, PublicResource, PurchaseTimeline } from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -69,4 +69,24 @@ export async function getHealth(signal?: AbortSignal): Promise<HealthStatus> {
   // Without the /api proxy (e.g. `vite preview`) the SPA fallback answers 200 with HTML.
   if (!isHealth(body)) throw new ApiError(0, "The Sliver API did not return a health report.");
   return body;
+}
+
+export function getActivity(
+  options: { limit?: number; type?: ActivityType } = {},
+  signal?: AbortSignal,
+): Promise<ActivityFeed> {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+  if (options.type) params.set("type", options.type);
+  return request<ActivityFeed>(`/activity?${params}`, { signal });
+}
+
+export function getPurchase(id: string, signal?: AbortSignal): Promise<PurchaseTimeline> {
+  return request<PurchaseTimeline>(`/purchases/${encodeURIComponent(id)}`, { signal });
+}
+
+// Server-sent events; EventSource resumes from Last-Event-ID by itself after a drop.
+export function activityStreamUrl(after: number, paymentId?: string): string {
+  const params = new URLSearchParams({ after: String(after) });
+  if (paymentId) params.set("payment_id", paymentId);
+  return `/api/activity/stream?${params}`;
 }
