@@ -7,11 +7,20 @@ from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
-from ..auth.deps import CurrentSeller, CurrentUser
+from ..auth.deps import CurrentReviewer, CurrentSeller, CurrentUser
 from ..deps import DB
-from ..models import Dataset, PipelineStep, User
+from ..models import Dataset, PipelineStep, Resource, User
 from ..pipeline.table import MAX_FILE_BYTES
-from .uploads import UploadForm, create_dataset, dataset_detail, dataset_summary, visible_datasets
+from .uploads import (
+    NotReviewable,
+    ReviewDecision,
+    UploadForm,
+    create_dataset,
+    dataset_detail,
+    dataset_summary,
+    decide,
+    visible_datasets,
+)
 
 router = APIRouter(prefix="/api/seller", tags=["seller"])
 
@@ -86,5 +95,29 @@ def get_dataset(dataset_id: Annotated[str, Path(max_length=36)], db: DB, user: C
     if dataset is None:
         # The same answer for "missing" and "someone else's", so ids cannot be probed.
         raise HTTPException(status_code=404, detail="Dataset not found.")
+    return detail_view(db, dataset)
+
+
+def detail_view(db, dataset: Dataset) -> dict:
     steps = steps_by_dataset(db, [dataset.id])[dataset.id]
-    return dataset_detail(dataset, steps, db.get(User, dataset.owner_id))
+    resources = db.scalars(
+        select(Resource)
+        .where(Resource.dataset_id == dataset.id)
+        .order_by(Resource.slice_filter.is_not(None), Resource.title)
+    ).all()
+    reviewer = db.get(User, dataset.reviewed_by) if dataset.reviewed_by else None
+    return dataset_detail(dataset, steps, db.get(User, dataset.owner_id), resources, reviewer)
+
+
+@router.post("/datasets/{dataset_id}/review")
+def review_dataset(
+    dataset_id: Annotated[str, Path(max_length=36)], form: ReviewDecision, db: DB, reviewer: CurrentReviewer
+) -> dict:
+    """A reviewer approves or rejects a dataset waiting in the queue, with a reason."""
+    try:
+        dataset = decide(db, dataset_id, reviewer, form)
+    except NotReviewable:
+        raise HTTPException(status_code=409, detail="This dataset is not waiting for review.") from None
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    return detail_view(db, dataset)

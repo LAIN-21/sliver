@@ -74,6 +74,13 @@ def engine(settings):
 
 
 @pytest.fixture(autouse=True)
+def offline_ai(monkeypatch):
+    """Tests never reach the Claude API: AI stages use the fallback unless a test injects an engine."""
+    for name in ("ANTHROPIC_API_KEY", "SLIVER_AI_MODEL", "SLIVER_AI_RESEARCH", "SLIVER_AUTO_ACCEPT_QUALITY"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def clean_tables(database_url):
     yield
     engine = create_engine(database_url)

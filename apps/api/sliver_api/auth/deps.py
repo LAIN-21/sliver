@@ -22,5 +22,12 @@ def current_seller(user: Annotated[User, Depends(current_user)]) -> User:
     return user
 
 
+def current_reviewer(user: Annotated[User, Depends(current_user)]) -> User:
+    if user.role != "reviewer":
+        raise HTTPException(status_code=403, detail="Only reviewers can do this.")
+    return user
+
+
 CurrentUser = Annotated[User, Depends(current_user)]
 CurrentSeller = Annotated[User, Depends(current_seller)]
+CurrentReviewer = Annotated[User, Depends(current_reviewer)]

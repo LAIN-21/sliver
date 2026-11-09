@@ -45,8 +45,8 @@ function Workspace({ account }: { account: Account }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title={seller ? "Your datasets" : "Review queue"}>
           {seller
-            ? "Every upload is validated, profiled, scanned for personal data and checked for duplicates before review."
-            : "Datasets that passed automated inspection and are waiting for review."}
+            ? "Every upload is validated, profiled, scanned for personal data, checked for duplicates, reviewed by AI and packaged into slivers. Clean datasets are accepted automatically; the rest go to a reviewer."
+            : "Datasets the pipeline could not accept on its own. Approve or reject each one with a reason."}
         </PageHeader>
         {seller ? (
           <Link to="/sell/upload" className={PRIMARY_BUTTON}>
@@ -60,39 +60,68 @@ function Workspace({ account }: { account: Account }) {
         <EmptyState title={seller ? "No uploads yet" : "Nothing to review"}>
           {seller
             ? "Upload a UTF-8 CSV of up to 5 MiB with its provenance to start the inspection pipeline."
-            : "Datasets appear here once their inspection finishes without blocking issues."}
+            : "Datasets appear here once inspection finishes and a blocking finding or low quality score needs a human."}
         </EmptyState>
       ) : null}
       {state.kind === "ready" && state.items.length > 0 ? (
-        <ul className="space-y-3">
-          {state.items.map((item) => (
-            <li key={item.id}>
-              <Link
-                to={`/sell/datasets/${item.id}`}
-                className="block rounded-xl border border-line bg-white p-4 hover:border-brand"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium [overflow-wrap:anywhere]">{item.title}</span>
-                  <DatasetPill status={item.status} />
-                </div>
-                <p className="mt-1 text-sm text-muted">
-                  {item.filename} · {formatBytes(item.size_bytes)}
-                  {item.row_count ? ` · ${item.row_count.toLocaleString("en-US")} rows` : ""} · uploaded{" "}
-                  {new Date(item.created_at).toLocaleString()}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
-                  {item.steps.map((step) => (
-                    <span key={step.stage} className="flex items-center gap-1.5 text-sm">
-                      {step.label}
-                      <StepPill status={step.status} />
-                    </span>
-                  ))}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        seller ? (
+          <DatasetList items={state.items} />
+        ) : (
+          <ReviewerSections items={state.items} />
+        )
       ) : null}
     </>
+  );
+}
+
+function ReviewerSections({ items }: { items: SellerDataset[] }) {
+  const waiting = items.filter((item) => item.status === "review");
+  const decided = items.filter((item) => item.status !== "review");
+  return (
+    <div className="space-y-8">
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">Waiting for review ({waiting.length})</h2>
+        {waiting.length ? <DatasetList items={waiting} /> : <p className="text-sm text-muted">The queue is empty.</p>}
+      </section>
+      {decided.length ? (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">Accepted or decided</h2>
+          <DatasetList items={decided} />
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function DatasetList({ items }: { items: SellerDataset[] }) {
+  return (
+    <ul className="space-y-3">
+      {items.map((item) => (
+        <li key={item.id}>
+          <Link
+            to={`/sell/datasets/${item.id}`}
+            className="block rounded-xl border border-line bg-white p-4 hover:border-brand"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-medium [overflow-wrap:anywhere]">{item.title}</span>
+              <DatasetPill status={item.status} />
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              {item.filename} · {formatBytes(item.size_bytes)}
+              {item.row_count ? ` · ${item.row_count.toLocaleString("en-US")} rows` : ""} · uploaded{" "}
+              {new Date(item.created_at).toLocaleString()}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+              {item.steps.map((step) => (
+                <span key={step.stage} className="flex items-center gap-1.5 text-sm">
+                  {step.label}
+                  <StepPill status={step.status} />
+                </span>
+              ))}
+            </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -1,6 +1,6 @@
 """Stage 2: column types, null rates, distinct counts, value ranges and time coverage."""
 
-from ..seed import infer_type
+from ..slicing import infer_type
 from .context import StageContext
 from .table import StageResult, finding
 

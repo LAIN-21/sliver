@@ -57,9 +57,17 @@ class StageResult:
     details: dict = field(default_factory=dict)
     # Dataset fields this stage established (for example row_count or columns).
     dataset_updates: dict = field(default_factory=dict)
+    # New rows (for example packaged Resources) that `jobs.finish` adds with the result.
+    records: list = field(default_factory=list)
+    # Fields `jobs.finish` sets on every Resource of the dataset (for example status).
+    resource_updates: dict = field(default_factory=dict)
+    # The stage chose not to run (for example research while it is turned off).
+    skipped: bool = False
 
     @property
     def status(self) -> str:
+        if self.skipped:
+            return "skipped"
         severities = {item["severity"] for item in self.findings}
         if "high" in severities:
             return "failed"

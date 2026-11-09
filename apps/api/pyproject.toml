@@ -16,6 +16,8 @@ dependencies = [
     "xrpl-py>=5.2,<6",
     # Multipart form parsing for seller CSV uploads (FastAPI optional dependency).
     "python-multipart>=0.0.20,<0.1",
+    # Claude review of seller datasets (#14); optional at runtime, see sliver_api/ai.py.
+    "anthropic>=2.6,<3",
 ]
 
 [dependency-groups]

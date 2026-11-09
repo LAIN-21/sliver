@@ -88,6 +88,49 @@ export type ColumnProfile = {
   max_length?: number;
 };
 
+// A packaged sliver as its seller and the reviewer see it (draft until #15 prices and publishes it).
+export type PackagedResource = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  row_count: number;
+  coverage: Coverage;
+  slice: { column: string; period: "month" | null; value: string } | null;
+  sha256: string;
+  size_bytes: number;
+  status: "draft" | "review" | "published" | "rejected";
+};
+
+export type ReviewOutcome = {
+  decision: "approved" | "rejected";
+  reason: string;
+  reviewer: string | null;
+  decided_at: string;
+};
+
+export type Listing = { title: string; description: string; category: string; tags: string[] };
+
+export type AiReviewDetails = {
+  engine: "claude" | "fallback";
+  model?: string;
+  cached?: boolean;
+  fallback_reason?: string;
+  listing?: Listing;
+  slice?: { column: string; period: "value" | "month" | "none"; source: "claude" | "rule" | "none" };
+};
+
+export type DecisionDetails = {
+  decision: "accepted" | "review";
+  quality_score: number;
+  threshold: number;
+  blocking: { stage: string; code: string; message: string }[];
+  deductions: { stage: string; code: string; message: string; points: number }[];
+};
+
+export type ResearchSource = { url: string; title: string; note: string };
+
 export type SellerDatasetDetail = Omit<SellerDataset, "steps"> & {
   steps: StepDetail[];
   columns: Column[];
@@ -100,6 +143,8 @@ export type SellerDatasetDetail = Omit<SellerDataset, "steps"> & {
     rights_statement?: string;
   };
   seller: { name: string };
+  resources: PackagedResource[];
+  review: ReviewOutcome | null;
 };
 
 // Mirrors the public activity schema in apps/api/sliver_api/activity/public.py.

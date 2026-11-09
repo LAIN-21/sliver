@@ -8,7 +8,6 @@ import csv
 import hashlib
 import io
 import logging
-import re
 import sys
 import tomllib
 from pathlib import Path
@@ -16,81 +15,17 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import slicing
 from .auth.service import apply_demo_passwords, normalize_email
 from .models import Dataset, Resource, User, utcnow
-from .storage import ObjectExistsError, ObjectStore
+from .slicing import describe, to_csv
+from .storage import ObjectStore
 
 logger = logging.getLogger("sliver_api.seed")
 
-MONTHS = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-]
-
-
-def infer_type(values: list[str]) -> str:
-    present = [value for value in values if value.strip()]
-    if not present:
-        return "text"
-    for kind, pattern in (
-        ("integer", r"-?\d+"),
-        ("decimal", r"-?\d+(\.\d+)?"),
-        ("date", r"\d{4}-\d{2}-\d{2}"),
-        ("month", r"\d{4}-\d{2}"),
-    ):
-        if all(re.fullmatch(pattern, value) for value in present):
-            return kind
-    return "text"
-
-
-def to_csv(header: list[str], rows: list[list[str]]) -> bytes:
-    buffer = io.StringIO()
-    writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow(header)
-    writer.writerows(rows)
-    return buffer.getvalue().encode("utf-8")
-
-
-def slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-
-
-def month_label(value: str) -> str:
-    year, month = value[:7].split("-")
-    return f"{MONTHS[int(month) - 1]} {year}"
-
-
-def describe(header: list[str], rows: list[list[str]]) -> list[dict]:
-    return [{"name": name, "type": infer_type([row[i] for row in rows])} for i, name in enumerate(header)]
-
-
-def coverage(header: list[str], rows: list[list[str]], time_column: str | None) -> dict:
-    result: dict = {}
-    if time_column and time_column in header:
-        index = header.index(time_column)
-        values = sorted(row[index] for row in rows if row[index])
-        if values:
-            result["time"] = {"column": time_column, "start": values[0], "end": values[-1]}
-    return result
-
 
 def store_object(store: ObjectStore, key: str, body: bytes) -> None:
-    try:
-        store.put(key, body)
-    except ObjectExistsError:
-        if hashlib.sha256(store.get(key)).hexdigest() != hashlib.sha256(body).hexdigest():
-            message = f"stored object {key} differs from the seed data; run `make dev-reset`"
-            raise RuntimeError(message) from None
+    slicing.store_object(store, key, body, hint="; run `make dev-reset`")
 
 
 def upsert_seller(db: Session, seller: dict) -> User:
@@ -134,25 +69,12 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
         db.add(dataset)
         db.flush()
 
-    slices: list[tuple[str, str, dict | None, list[list[str]], int]] = [
-        ("full", "full dataset", None, rows, spec["price_minor"])
-    ]
     column = spec.get("slice_by")
-    if column:
-        index = header.index(column)
-        by_month = spec.get("slice_period") == "month"
-        groups: dict[str, list[list[str]]] = {}
-        for row in rows:
-            groups.setdefault(row[index][:7] if by_month else row[index], []).append(row)
-        for value, group in sorted(groups.items()):
-            label = month_label(value) if by_month else value
-            slice_filter = {"column": column, "period": "month" if by_month else None, "value": value}
-            slices.append((slug(label), label, slice_filter, group, spec["slice_price_minor"]))
-
+    period = spec.get("slice_period")
     created = 0
-    for key_part, label, slice_filter, group, price in slices:
-        object_key = f"resources/seed/{stem}/{key_part}.csv"
-        body = to_csv(header, group)
+    for piece in slicing.plan(header, rows, column, period):
+        object_key = f"resources/seed/{stem}/{piece.key}.csv"
+        body = to_csv(header, piece.rows)
         existing_sha = db.scalar(select(Resource.sha256).where(Resource.object_key == object_key))
         if existing_sha is not None:
             if existing_sha != hashlib.sha256(body).hexdigest():
@@ -161,33 +83,26 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
             store_object(store, object_key, body)  # restores the object if the bucket lost it
             continue
         store_object(store, object_key, body)
-        resource_coverage = coverage(header, group, spec.get("time_column"))
-        if slice_filter:
-            resource_coverage["slice"] = {"column": column, "value": label}
-        title = spec["title"] if slice_filter is None else f"{spec['title']}: {label}"
-        description = spec["description"]
-        if slice_filter:
-            description += f" This sliver covers {label} only."
         db.add(
             Resource(
                 dataset_id=dataset.id,
                 owner_id=owner.id,
-                title=title,
-                description=description,
+                title=slicing.piece_title(spec["title"], piece),
+                description=slicing.piece_description(spec["description"], piece),
                 category=spec["category"],
                 tags=spec["tags"],
-                columns=describe(header, group),
+                columns=describe(header, piece.rows),
                 column_names=[name.lower() for name in header],
-                row_count=len(group),
-                coverage=resource_coverage,
-                slice_filter=slice_filter,
+                row_count=len(piece.rows),
+                coverage=slicing.piece_coverage(header, piece, spec.get("time_column")),
+                slice_filter=piece.filter,
                 object_key=object_key,
                 sha256=hashlib.sha256(body).hexdigest(),
                 size_bytes=len(body),
-                price_minor=price,
+                price_minor=spec["price_minor"] if piece.filter is None else spec["slice_price_minor"],
                 status="published",
                 published_at=utcnow(),
-                search_text=" ".join([spec["category"], *spec["tags"], *header, label]),
+                search_text=slicing.search_text(spec["category"], spec["tags"], header, piece.label),
             )
         )
         created += 1

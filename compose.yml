@@ -24,6 +24,11 @@ x-app-environment: &app-environment
   SLIVER_ALLOWED_ORIGINS: ${SLIVER_ALLOWED_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}
   SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
   SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+  # AI review (#14). An empty key selects the deterministic offline fallback.
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  SLIVER_AI_MODEL: ${SLIVER_AI_MODEL:-claude-opus-5-5}
+  SLIVER_AI_RESEARCH: ${SLIVER_AI_RESEARCH:-false}
+  SLIVER_AUTO_ACCEPT_QUALITY: ${SLIVER_AUTO_ACCEPT_QUALITY:-70}
 
 services:
   postgres:

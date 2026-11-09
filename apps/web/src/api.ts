@@ -128,6 +128,11 @@ export function uploadDataset(form: FormData): Promise<SellerDataset> {
   return request<SellerDataset>("/seller/datasets", { method: "POST", body: form });
 }
 
+export function reviewDataset(id: string, decision: "approve" | "reject", reason: string): Promise<SellerDatasetDetail> {
+  const init = { method: "POST", body: JSON.stringify({ decision, reason }), headers: { "Content-Type": "application/json" } };
+  return request<SellerDatasetDetail>(`/seller/datasets/${encodeURIComponent(id)}/review`, init);
+}
+
 export function getActivity(
   options: { limit?: number; type?: ActivityType } = {},
   signal?: AbortSignal,

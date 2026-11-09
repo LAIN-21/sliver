@@ -3,18 +3,19 @@
 import hashlib
 import re
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
-from ..models import Dataset, PipelineStep, User, new_id, utcnow
+from ..models import Dataset, PipelineStep, Resource, User, new_id, utcnow
 from ..pipeline.jobs import enqueue
 from ..pipeline.registry import STAGES_BY_NAME
 from ..pipeline.table import MAX_FILE_BYTES
 from ..storage import ObjectStore
 
-# Datasets a reviewer may see: inspection finished cleanly (#14 adds the review itself).
+# Datasets a reviewer may see: waiting for review or accepted, plus any a reviewer has decided.
 REVIEW_STATUSES = ("review", "accepted")
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 TRUE_VALUES = ("true", "on", "yes", "1")
@@ -109,7 +110,44 @@ def visible_datasets(user: User):
     query = select(Dataset)
     if user.role == "seller":
         return query.where(Dataset.owner_id == user.id)
-    return query.where(Dataset.status.in_(REVIEW_STATUSES))
+    return query.where(or_(Dataset.status.in_(REVIEW_STATUSES), Dataset.reviewed_at.is_not(None)))
+
+
+class ReviewDecision(BaseModel):
+    decision: Literal["approve", "reject"]
+    reason: str = Field(min_length=3, max_length=1000)
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def strip(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class NotReviewable(Exception):
+    """Only datasets waiting in the reviewer queue can be decided."""
+
+
+def decide(db: Session, dataset_id: str, reviewer: User, form: ReviewDecision) -> Dataset | None:
+    """Approve (accepted, slivers back to draft for pricing) or reject (dataset and slivers rejected)."""
+    dataset = db.scalar(
+        visible_datasets(reviewer).where(Dataset.id == dataset_id).with_for_update(of=Dataset)
+    )
+    if dataset is None:
+        db.rollback()
+        return None
+    if dataset.status != "review":
+        db.rollback()
+        raise NotReviewable(dataset.status)
+    approved = form.decision == "approve"
+    dataset.status = "accepted" if approved else "rejected"
+    dataset.reviewed_by, dataset.reviewed_at, dataset.review_reason = reviewer.id, utcnow(), form.reason
+    db.execute(
+        update(Resource)
+        .where(Resource.dataset_id == dataset.id, Resource.status.in_(("draft", "review")))
+        .values(status="draft" if approved else "rejected")
+    )
+    db.commit()
+    return dataset
 
 
 def iso(value) -> str | None:
@@ -139,12 +177,48 @@ def dataset_summary(dataset: Dataset, steps: list[PipelineStep]) -> dict:
     }
 
 
-def dataset_detail(dataset: Dataset, steps: list[PipelineStep], owner: User) -> dict:
+def private_resource(resource: Resource) -> dict:
+    """A packaged sliver as its seller and the reviewer see it; never used for public discovery."""
+    return {
+        "id": resource.id,
+        "title": resource.title,
+        "description": resource.description,
+        "category": resource.category,
+        "tags": list(resource.tags),
+        "row_count": resource.row_count,
+        "coverage": resource.coverage,
+        "slice": resource.slice_filter,
+        "sha256": resource.sha256,
+        "size_bytes": resource.size_bytes,
+        "status": resource.status,
+    }
+
+
+def review_view(dataset: Dataset, reviewer: User | None) -> dict | None:
+    if dataset.reviewed_at is None:
+        return None
+    return {
+        "decision": "approved" if dataset.status == "accepted" else "rejected",
+        "reason": dataset.review_reason,
+        "reviewer": reviewer.display_name if reviewer else None,
+        "decided_at": iso(dataset.reviewed_at),
+    }
+
+
+def dataset_detail(
+    dataset: Dataset,
+    steps: list[PipelineStep],
+    owner: User,
+    resources: list[Resource] = (),
+    reviewer: User | None = None,
+) -> dict:
     detail = dataset_summary(dataset, steps)
     detail.update(
         columns=dataset.columns,
         provenance=dataset.provenance,
         seller={"name": owner.display_name},
+        resources=[private_resource(resource) for resource in resources],
+        review=review_view(dataset, reviewer),
     )
     for view, step in zip(detail["steps"], steps, strict=True):
         view.update(

@@ -62,6 +62,10 @@ class Dataset(Base):
     provenance: Mapped[dict] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(24), default="uploaded")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # A reviewer's approve or reject decision (the pipeline's own decision is a pipeline step).
+    reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Resource(Base):
