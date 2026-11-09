@@ -24,13 +24,17 @@ Use it honestly:
    columns, time range, budget) before buying anything.
 2. If the recommendation is look_elsewhere, say plainly that Sliver does not have this data and
    suggest looking elsewhere. Do not buy a near miss.
-3. Only call sliver_buy with a budget your human gave you. Never exceed it and never invent one.
+3. When sliver_evaluate suggests a custom slice (the best sliver covers much more than the need),
+   call sliver_quote_slice with its arguments. Quoting is free and never spends: Sliver cuts just
+   the requested rows and prices them per row. Compare the quote with the pre-cut sliver and buy
+   whichever fits the need and the budget; a quote's id is bought with sliver_buy like any sliver.
+4. Only call sliver_buy with a budget your human gave you. Never exceed it and never invent one.
    If the best fit costs more than the budget, ask your human before doing anything else.
-4. Pass sliver_buy a short, honest reason: your human's actual need in plain words, for example
+5. Pass sliver_buy a short, honest reason: your human's actual need in plain words, for example
    "Weekly SGSIN-CNSHA spot rates since September to quote a shipment". Sliver shows it publicly
    on the purchase timeline, so never include wallet data, seeds, budgets or your human's private
    details.
-5. After buying, report the file path, the SHA-256 check, the transaction hash and explorer link.
+6. After buying, report the file path, the SHA-256 check, the transaction hash and explorer link.
 Testnet only: no real money moves.
 """
 
@@ -58,6 +62,41 @@ def refusal(error: Exception) -> dict[str, Any]:
     if isinstance(error, Refused):
         return {"status": "refused", "code": error.code, "message": error.message, "spent": 0}
     return {"status": "error", "message": str(error), "hint": "Check sliver_purchases before retrying."}
+
+
+def quote_summary(status: int, body: dict[str, Any], budget_minor: int | None) -> dict[str, Any]:
+    """A custom-slice quote (or refusal) as the agent sees it. Nothing has been spent."""
+    if status not in (200, 201):
+        error = body.get("error") if isinstance(body.get("error"), dict) else {}
+        hints = {key: value for key, value in error.items() if key not in ("code", "message")}
+        return {
+            "status": "refused",
+            "code": str(error.get("code") or f"http_{status}"),
+            "message": str(error.get("message") or body.get("detail") or ""),
+            **hints,
+            "spent": 0,
+        }
+    price_minor = (body.get("price") or {}).get("amount_minor")
+    result = {
+        "status": "quoted",
+        "resource_id": body.get("id"),
+        "new": body.get("created") is True,
+        "parent": body.get("parent"),
+        "filter": body.get("filter"),
+        "rows": body.get("row_count"),
+        "coverage": body.get("coverage"),
+        "price_usd": money(price_minor) if isinstance(price_minor, int) else None,
+        "price_breakdown": body.get("price_breakdown"),
+        "sha256": (body.get("content") or {}).get("sha256"),
+        "seller": (body.get("seller") or {}).get("name"),
+        "spent": 0,
+    }
+    if budget_minor is not None and isinstance(price_minor, int):
+        result["within_budget"] = price_minor <= budget_minor
+    result["next"] = (
+        f"To buy, call sliver_buy(resource_id={body.get('id')!r}, budget_usd=<your human's budget>)."
+    )
+    return result
 
 
 def build_server(config: Config, *, api: SliverApi | None = None, buyer: Buyer | None = None) -> MCPServer:
@@ -145,6 +184,36 @@ def build_server(config: Config, *, api: SliverApi | None = None, buyer: Buyer |
             )
         except (ApiError, Refused, ValueError) as error:
             return refusal(error)
+
+    @server.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True
+        )
+    )
+    def sliver_quote_slice(
+        resource_id: str,
+        time_start: str | None = None,
+        time_end: str | None = None,
+        where: dict[str, str] | None = None,
+        budget_usd: float | None = None,
+    ) -> dict[str, Any]:
+        """Quote a custom slice: exactly the rows your human needs from a full-dataset listing.
+        Never spends.
+
+        resource_id: a full-dataset listing whose custom_slices.available is true.
+        time_start / time_end: YYYY, YYYY-MM or YYYY-MM-DD, inclusive, on the dataset's time column.
+        where: equality on category columns, for example {"lane": "SGSIN-CNSHA"}.
+        budget_usd: optional, only to say whether the quote fits; nothing is bought here.
+        Sliver answers with an unlisted sliver id, rows, coverage, price (with its breakdown) and
+        SHA-256, never row values. Buy it with sliver_buy(resource_id=<that id>, budget_usd=...).
+        Refusals name what can be filtered, or point to an existing sliver with the same rows.
+        """
+        try:
+            status, body = api.quote_slice(check_resource_id(resource_id), time_start, time_end, where)
+            budget_minor = None if budget_usd is None else usd_to_minor(budget_usd, "budget_usd")
+        except (ApiError, Refused, ValueError) as error:
+            return refusal(error)
+        return quote_summary(status, body, budget_minor)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
     def sliver_buy(

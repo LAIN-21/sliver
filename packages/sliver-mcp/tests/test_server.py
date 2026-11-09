@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from mcp import Client
 
-from conftest import BUYER
+from conftest import BUYER, CUSTOM_CSV, CUSTOM_ID, FULL_BERTHS, SELLER
 from sliver_mcp import server as server_module
 from sliver_mcp.server import build_server
 from sliver_mcp.store import Store
@@ -41,6 +41,7 @@ def test_tools_and_honest_use_instructions(server):
         "sliver_search",
         "sliver_inspect",
         "sliver_evaluate",
+        "sliver_quote_slice",
         "sliver_buy",
         "sliver_wallet",
         "sliver_purchases",
@@ -139,3 +140,64 @@ def test_a_failure_after_payment_is_not_reported_as_nothing_spent(server, tmp_pa
     result = call(server, "sliver_buy", {"resource_id": CHEAP, "budget_usd": 5, "output_dir": str(blocked)})
     assert result["status"] == "paid_not_completed" and result["code"] == "save_failed"
     assert result["spent_usd"] == 1.5 and result["tx_hash"] and "spent" not in result
+
+
+# --- custom slices (#39) ------------------------------------------------------------------
+
+
+def test_quoting_a_custom_slice_never_spends_and_the_quote_is_bought_like_any_sliver(server, stub):
+    quoted = call(
+        server,
+        "sliver_quote_slice",
+        {"resource_id": FULL_BERTHS, "time_start": "2026-10-01", "time_end": "2026-10-10", "budget_usd": 1},
+    )
+    assert quoted["status"] == "quoted" and quoted["spent"] == 0
+    assert quoted["resource_id"] == CUSTOM_ID and quoted["rows"] == 10 and quoted["price_usd"] == 0.24
+    assert quoted["within_budget"] is True and quoted["new"] is True
+    assert quoted["parent"]["id"] == FULL_BERTHS and "sliver_buy" in quoted["next"]
+    assert dict(stub.quote_requests[0].url.params) == {"time_start": "2026-10-01", "time_end": "2026-10-10"}
+    assert not stub.data_requests and not stub.payments  # quoting never touches the x402 path
+
+    bought = call(server, "sliver_buy", {"resource_id": CUSTOM_ID, "budget_usd": 1})
+    assert bought["status"] == "delivered" and bought["sha256_verified"] is True
+    assert bought["pay_to"] == SELLER.address and bought["price_usd"] == 0.24
+    assert Path(bought["file"]).read_bytes() == CUSTOM_CSV
+
+
+def test_a_custom_slice_is_still_bought_only_within_the_budget(server, stub):
+    call(server, "sliver_quote_slice", {"resource_id": FULL_BERTHS, "time_start": "2026-10-01"})
+    refused = call(server, "sliver_buy", {"resource_id": CUSTOM_ID, "budget_usd": 0.1})
+    assert refused["status"] == "refused" and refused["code"] == "over_budget"
+    assert call(server, "sliver_buy", {"resource_id": CUSTOM_ID})["code"] == "no_budget"
+    assert not stub.payments
+
+
+def test_quote_refusals_pass_the_servers_hints_through(server, stub):
+    refused = call(server, "sliver_quote_slice", {"resource_id": "11111111-1111-4111-8111-111111111111",
+                                                  "where": {"lane": "SGSIN-CNSHA"}})  # fmt: skip
+    assert refused == {
+        "status": "refused",
+        "code": "use_full_dataset",
+        "message": "Custom slices are cut from the full dataset.",
+        "full_dataset_id": FULL_BERTHS,
+        "spent": 0,
+    }
+    assert json.loads(stub.quote_requests[0].url.params["where"]) == {"lane": "SGSIN-CNSHA"}
+    empty = call(server, "sliver_quote_slice", {"resource_id": FULL_BERTHS})
+    assert empty["code"] == "empty_filter" and empty["filterable"]["min_rows"] == 5
+    assert call(server, "sliver_quote_slice", {"resource_id": "../etc"})["code"] == "invalid_resource_id"
+    assert not stub.payments
+
+
+def test_evaluate_suggests_a_custom_slice_through_the_protocol(server):
+    report = call(
+        server,
+        "sliver_evaluate",
+        {"need": "singapore berth waiting times", "time_start": "2026-10-01", "time_end": "2026-10-10",
+         "budget_usd": 5},
+    )  # fmt: skip
+    assert report["recommendation"] == "skip"  # the full dataset is over budget
+    suggestion = report["custom_slice"]
+    assert suggestion["tool"] == "sliver_quote_slice" and suggestion["resource_id"] == FULL_BERTHS
+    assert (suggestion["time_start"], suggestion["time_end"]) == ("2026-10-01", "2026-10-10")
+    assert "sliver_quote_slice" in report["summary"] and report["spent"] == 0
