@@ -257,24 +257,36 @@ class Question:
     max_age_days: int | None = None
 
 
+def last_month(today: date) -> date:
+    """The first day of the calendar month before `today`."""
+    return (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+
 def questions(today: date) -> tuple[Question, Question]:
+    """One need Sliver cannot meet, and one that exactly one sliver of the fresh upload meets:
+    the demo table is sliced by calendar month (see examples/demo/generate.py)."""
     miss = Question(
         ask=f"Air-cargo rates from Singapore Changi (SIN) to Frankfurt (FRA), per kg. Budget ${BUDGET_USD}.",
         need="air cargo rates Singapore Changi Frankfurt per kg",
         required_columns=("origin", "destination", "usd_per_kg"),
         expect="look_elsewhere",
     )
+    month = last_month(today)
     hit = Question(
         ask=(
-            "Bunker fuel prices in Singapore by fuel grade for the last eight weeks, "
-            f"no more than two weeks old. Budget ${BUDGET_USD}."
+            "Daily anchorage wait hours in Singapore for container ships, tankers and bulk carriers "
+            f"in {month:%B %Y}. Budget ${BUDGET_USD}."
         ),
-        need="bunker fuel prices Singapore",
-        required_columns=("port", "fuel_grade", "bunker_price_usd_per_tonne"),
+        need="Singapore anchorage wait hours container ship tanker bulk carrier",
+        required_columns=(
+            "date",
+            "container_ship_avg_anchorage_wait_hours",
+            "tanker_avg_anchorage_wait_hours",
+            "bulk_carrier_avg_anchorage_wait_hours",
+        ),
         expect="buy",
-        time_start=(today - timedelta(weeks=8)).isoformat(),
-        time_end=today.isoformat(),
-        max_age_days=14,
+        time_start=f"{month:%Y-%m}",
+        time_end=f"{month:%Y-%m}",
     )
     return miss, hit
 
@@ -340,7 +352,7 @@ class Demo:
         )
         generator = load_generator(Path(self.args.generator))
         data = generator.generate(self.run_id, self.today)
-        title = f"Bunker fuel prices at five ports (demo run {self.run_id})"
+        title = f"Singapore anchorage waiting times, daily (demo run {self.run_id})"
         dataset = checked(
             self.seller.post(
                 "/api/seller/datasets",
@@ -352,11 +364,11 @@ class Demo:
                     "rights_confirmed": "true",
                     "rights_statement": "Synthetic data created for the Sliver demo; free to redistribute.",
                 },
-                files={"file": (f"bunker-prices-{self.run_id}.csv", data, "text/csv")},
+                files={"file": (f"singapore-anchorage-waits-{self.run_id}.csv", data, "text/csv")},
             ),
             "Upload",
         )
-        say(f"  uploaded “{title}”: {dataset['row_count']} rows, {dataset['size_bytes']:,} bytes")
+        say(f"  uploaded “{title}” ({dataset['size_bytes']:,} bytes)")
         say(f"  SHA-256 {dataset['sha256']}")
         say(f"  seller page: {self.web_url}/sell/datasets/{dataset['id']}")
         return dataset

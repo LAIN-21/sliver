@@ -1,47 +1,59 @@
-"""Synthetic bunker fuel prices for `make demo`: `python3 examples/demo/generate.py [RUN_ID] [OUT]`.
+"""Synthetic daily anchorage waiting times at the Port of Singapore for `make demo`.
 
-Every demo run uploads a table that is new to the catalog: weekly prices for the 26 weeks up to
-the run's week, with values drawn from a generator seeded by the run id. Two runs never share
-rows, so a re-run is not sent to the reviewer as a duplicate of an earlier run. Port names and
-fuel grades are real; none of the numbers describe real prices.
+    python3 examples/demo/generate.py [RUN_ID] [OUT.csv]
 
-Without arguments it prints a table for today with run id "manual", for example to upload by
-hand at /sell/upload.
+Every demo run uploads a table that is new to the catalog: one row per day for the six whole
+calendar months before the run's month, drawn from a generator seeded by the run id. Two runs
+never share rows, so a re-run is not sent to the reviewer as a duplicate of an earlier one.
+
+The table is shaped so that the only valid way to slice it is by calendar month of `date`,
+whether Claude or the offline rule chooses: `port` holds a single value and every other column
+is a decimal. Ports work every day and only whole months are included, so every month's sliver
+covers its whole month, and the demo's buyer question ("last month") is met by exactly one sliver.
+
+None of the numbers describe real operations. Without arguments it prints a table for today with
+run id "manual", for example to upload by hand at /sell/upload.
 """
 
 import csv
 import io
+import math
 import random
 import sys
 from datetime import date, timedelta
 
-HEADER = ["week_start", "port", "fuel_grade", "bunker_price_usd_per_tonne", "supplier_quotes"]
-# Port price level relative to the regional average.
-PORTS = {"Singapore": 1.0, "Fujairah": 0.985, "Rotterdam": 0.97, "Busan": 1.035, "Hong Kong": 1.045}
-# Starting price in USD per tonne.
-GRADES = {"VLSFO": 612.0, "HSFO": 468.0, "MGO": 765.0}
-WEEKS = 26
+PORT = "Singapore"
+# Typical waiting hours at anchorage before berthing, by vessel type.
+WAITS = {"container_ship": 6.0, "tanker": 18.0, "bulk_carrier": 26.0}
+HEADER = [
+    "date",
+    "port",
+    *(f"{kind}_avg_anchorage_wait_hours" for kind in WAITS),
+    "avg_vessels_at_anchorage",
+]
+MONTHS = 6
 
 
-def week_starts(today: date, count: int = WEEKS) -> list[date]:
-    """The Mondays of the `count` weeks up to and including the week of `today`."""
-    last = today - timedelta(days=today.weekday())
-    return [last - timedelta(weeks=count - 1 - index) for index in range(count)]
+def days(today: date, months: int = MONTHS) -> list[date]:
+    """Every day of the `months` whole calendar months before the month of `today`."""
+    last = today.replace(day=1) - timedelta(days=1)
+    first = last.replace(day=1)
+    for _ in range(months - 1):
+        first = (first - timedelta(days=1)).replace(day=1)
+    return [first + timedelta(days=offset) for offset in range((last - first).days + 1)]
 
 
 def rows(run_id: str, today: date) -> list[list[str]]:
     rng = random.Random(f"sliver-demo:{run_id}")  # noqa: S311 - simulated data, not security
-    level = dict(GRADES)
+    congestion = 1.0
     table = []
-    for week in week_starts(today):
-        for grade in GRADES:
-            # A shared weekly move per grade, then port-level noise around it.
-            level[grade] = max(GRADES[grade] * 0.6, level[grade] * (1 + rng.gauss(0.0, 0.018)))
-        for port, factor in PORTS.items():
-            for grade in GRADES:
-                price = level[grade] * factor * (1 + rng.gauss(0.0, 0.006))
-                quotes = max(2, round(rng.gauss(9 if port == "Singapore" else 6, 2)))
-                table.append([week.isoformat(), port, grade, f"{price:.2f}", str(quotes)])
+    for day in days(today):
+        # Slow-moving congestion, a weekly rhythm, and daily noise per vessel type.
+        congestion = min(1.8, max(0.6, congestion + rng.gauss(0.0, 0.04)))
+        weekly = 1 + 0.08 * math.sin(2 * math.pi * day.weekday() / 7)
+        waits = [max(0.5, base * congestion * weekly * rng.uniform(0.8, 1.2)) for base in WAITS.values()]
+        vessels = 95 * congestion * rng.uniform(0.9, 1.1)
+        table.append([day.isoformat(), PORT, *(f"{wait:.2f}" for wait in waits), f"{vessels:.1f}"])
     return table
 
 

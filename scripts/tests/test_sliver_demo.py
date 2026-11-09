@@ -4,7 +4,7 @@ dataset and the two buyer questions. Run with the buyer packages: `cd packages &
 import csv
 import io
 import sys
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -52,7 +52,7 @@ def validated_tx(**overrides) -> dict:
     return result
 
 
-def run_record(title: str = "Bunker fuel prices: Singapore") -> dict:
+def run_record(title: str = "Singapore anchorage waiting times: October 2026") -> dict:
     return {
         "run_id": "20261109T120000Z",
         "finished_at": "2026-11-09 12:05 UTC",
@@ -64,8 +64,8 @@ def run_record(title: str = "Bunker fuel prices: Singapore") -> dict:
                 "title": title,
             }
         ],
-        "dataset_title": "Bunker fuel prices at five ports (demo run 20261109T120000Z)",
-        "dataset_rows": 390,
+        "dataset_title": "Singapore anchorage waiting times, daily (demo run 20261109T120000Z)",
+        "dataset_rows": 184,
         "quality_score": 100,
         "review_engine": "offline fallback",
         "published": 6,
@@ -256,26 +256,40 @@ def test_dataset_is_deterministic_per_run_and_new_each_run(generator):
 def test_dataset_shape(generator):
     header, *rows = table(generator.generate("run-1", TODAY))
     assert header == generator.HEADER
-    assert len(rows) == generator.WEEKS * len(generator.PORTS) * len(generator.GRADES)
-    weeks = sorted({row[0] for row in rows})
-    assert weeks[-1] == "2026-11-09"  # the Monday of the run's week
-    assert len(weeks) == generator.WEEKS
-    assert all(float(row[3]) > 0 and int(row[4]) >= 2 for row in rows)
+    days = [date.fromisoformat(row[0]) for row in rows]
+    assert days == sorted(days) and len(set(days)) == len(days)
+    assert days[0] == date(2026, 5, 1) and days[-1] == date(2026, 10, 31)  # six whole months
+    assert all((later - earlier).days == 1 for earlier, later in zip(days, days[1:], strict=False))
+    assert {row[1] for row in rows} == {"Singapore"}
+    assert all(float(value) > 0 for row in rows for value in row[2:])
+    assert all("." in value for row in rows for value in row[2:])  # decimals, never category values
 
 
-def listing(generator, *, label: str | None, end: date, price_minor: int = 175) -> dict:
-    """A published sliver of the demo dataset as the catalog describes it (offline fallback)."""
-    weeks = generator.week_starts(end)
+def test_dataset_can_only_be_sliced_by_month(generator):
+    """No column but `date` has between 2 and 50 distinct short values, so neither Claude nor
+    the offline rule can slice the demo table by anything other than calendar month."""
+    _, *rows = table(generator.generate("run-1", TODAY))
+    for index, name in enumerate(generator.HEADER[1:], start=1):
+        distinct = {row[index] for row in rows}
+        assert len(distinct) == 1 or len(distinct) * 2 > len(rows), name
+    assert len({row[0][:7] for row in rows}) >= 2
+
+
+def month_listing(generator, run: str, month: str | None, *, price_minor: int) -> dict:
+    """A published sliver of the demo table as the catalog describes it: the full table, or the
+    slice for one calendar month."""
+    days = [row[0] for row in generator.rows(run, TODAY) if month is None or row[0].startswith(month)]
+    label = None if month is None else date.fromisoformat(f"{month}-01").strftime("%B %Y")
     return {
-        "id": f"res-{label or 'full'}-{end}",
-        "title": "Bunker fuel prices at five ports" + (f": {label}" if label else ""),
-        "description": "390 rows with 5 columns.",
+        "id": f"{run}-{month or 'full'}",
+        "title": "Singapore anchorage waiting times, daily" + (f": {label}" if label else ""),
+        "description": f"{len(days)} rows with 5 columns.",
         "category": "port-operations",
-        "tags": ["port", "fuel", "grade", "bunker", "price", "tonne"],
+        "tags": ["port", "container", "ship", "wait", "tanker", "bulk", "carrier", "vessels", "anchorage"],
         "columns": [{"name": name} for name in generator.HEADER],
         "coverage": {
-            "time": {"start": weeks[0].isoformat(), "end": weeks[-1].isoformat()},
-            **({"slice": {"column": "port", "value": label}} if label else {}),
+            "time": {"start": days[0], "end": days[-1]},
+            **({"slice": {"column": "date", "value": label}} if label else {}),
         },
         "price": {"amount_minor": price_minor, "currency": "USD"},
     }
@@ -295,33 +309,51 @@ def ask(question: demo.Question, listings: list[dict]) -> dict:
     )
 
 
+SEEDED = {
+    "id": "berth",
+    "title": "Singapore berth waiting times",
+    "columns": [{"name": "date"}, {"name": "terminal"}],
+    "coverage": {"time": {"start": "2026-08-01", "end": "2026-10-31"}},
+    "price": {"amount_minor": 450, "currency": "USD"},
+}
+
+
+def demo_listings(generator, run: str = "run-1") -> list[dict]:
+    months = sorted({row[0][:7] for row in generator.rows(run, TODAY)})
+    return [
+        month_listing(generator, run, None, price_minor=283),
+        *(month_listing(generator, run, month, price_minor=165) for month in months),
+    ]
+
+
+def test_last_month():
+    assert demo.last_month(date(2026, 11, 9)) == date(2026, 10, 1)
+    assert demo.last_month(date(2026, 1, 1)) == date(2025, 12, 1)
+    assert demo.last_month(date(2026, 3, 31)) == date(2026, 2, 1)
+
+
 def test_questions_get_the_expected_answers(generator):
     miss, hit = demo.questions(TODAY)
-    fresh = [listing(generator, label=port, end=TODAY) for port in ("Busan", "Singapore")]
-    fresh.append(listing(generator, label=None, end=TODAY, price_minor=320))
-    seeded = {
-        "id": "berth",
-        "title": "Singapore berth waiting times",
-        "columns": [{"name": "date"}, {"name": "terminal"}],
-        "coverage": {"time": {"start": "2026-08-01", "end": "2026-10-31"}},
-        "price": {"amount_minor": 450, "currency": "USD"},
-    }
-    assert ask(miss, [*fresh, seeded])["recommendation"] == miss.expect == "look_elsewhere"
-    report = ask(hit, [seeded, *fresh])
+    assert "October 2026" in hit.ask and hit.time_start == hit.time_end == "2026-10"
+    listings = [SEEDED, *demo_listings(generator)]
+    assert ask(miss, listings)["recommendation"] == miss.expect == "look_elsewhere"
+    report = ask(hit, listings)
     assert report["recommendation"] == hit.expect == "buy"
-    assert report["best"] == "res-Singapore-2026-11-11"
+    assert report["best"] == "run-1-2026-10"  # last month's sliver, not the dearer full table
+    verdicts = {c["resource_id"]: c["verdict"] for c in report["candidates"]}
+    assert verdicts["run-1-full"] == "buy" and verdicts["run-1-2026-09"] == "look_elsewhere"
+    assert verdicts["berth"] == "look_elsewhere"
 
 
-def test_buy_question_prefers_this_run_over_an_older_run(generator):
+def test_buy_question_holds_without_claude_metadata(generator):
+    """Claude's listing may not say "Singapore" (it never sees the seller's title): the column
+    names alone still cover enough of the need."""
     _, hit = demo.questions(TODAY)
-    older = listing(generator, label="Singapore", end=TODAY - timedelta(weeks=1), price_minor=100)
-    fresh = listing(generator, label="Singapore", end=TODAY, price_minor=175)
-    assert ask(hit, [older, fresh])["best"] == fresh["id"]
-    stale = listing(generator, label="Singapore", end=TODAY - timedelta(weeks=4), price_minor=100)
-    assert ask(hit, [stale])["recommendation"] == "skip"
+    bare = [{**item, "title": "Uploaded table", "tags": []} for item in demo_listings(generator)]
+    assert ask(hit, bare)["best"] == "run-1-2026-10"
 
 
 def test_buy_question_skips_what_the_budget_does_not_cover(generator):
     _, hit = demo.questions(TODAY)
-    report = ask(hit, [listing(generator, label="Singapore", end=TODAY, price_minor=650)])
+    report = ask(hit, [month_listing(generator, "run-1", "2026-10", price_minor=650)])
     assert report["recommendation"] == "skip"
