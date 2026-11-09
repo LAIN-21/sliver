@@ -1,12 +1,15 @@
 import json
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from accounts import make_user, sign_in
 from sqlalchemy import func, select
 
-from sliver_api.models import Dataset, Resource, SearchEvent, User
+from sliver_api.models import Dataset, Resource, SearchEvent, User, utcnow
 from sliver_api.seed import seed
+from sliver_api.worker import prune
 
 FIXTURES = Path(__file__).parent / "fixtures" / "catalog"
 PUBLIC_KEYS = {
@@ -132,7 +135,10 @@ def test_unpublished_resources_are_invisible(seeded, client, sessions):
     assert search(client, category="freight-rates")["total"] == 2
 
 
-def test_searches_are_recorded_and_unmet_demand_is_aggregated(seeded, client, sessions):
+def test_searches_are_recorded_and_unmet_demand_is_aggregated(seeded, make_client, sessions):
+    client = make_client()
+    make_user(sessions, "seller@sliver.local")
+    sign_in(client, "seller@sliver.local")
     search(client, q="air cargo Changi Frankfurt")
     search(client, q="Air cargo  Changi Frankfurt")
     search(client, q="berth waiting")
@@ -149,6 +155,38 @@ def test_searches_are_recorded_and_unmet_demand_is_aggregated(seeded, client, se
             "last_seen": demand[0]["last_seen"],
         }
     ]
+
+
+def test_unmet_demand_needs_a_signed_in_seller_or_reviewer(seeded, make_client, sessions):
+    client = make_client()
+    search(client, q="air cargo Changi Frankfurt")
+    refused = client.get("/api/demand")
+    assert refused.status_code == 401
+    assert "air cargo" not in refused.text
+    make_user(sessions, "seller@sliver.local")
+    sign_in(client, "seller@sliver.local")
+    assert client.get("/api/demand").json()["items"][0]["query"] == "air cargo changi frankfurt"
+
+
+def test_worker_deletes_search_events_past_retention(client, sessions, settings, engine):
+    with sessions() as db:
+        for age_days in (5, 89, 91, 400):
+            db.add(
+                SearchEvent(
+                    query=f"aged {age_days}",
+                    normalized_query=f"aged {age_days}",
+                    filters={},
+                    result_count=0,
+                    created_at=utcnow() - timedelta(days=age_days),
+                )
+            )
+        db.commit()
+    assert settings.search_event_retention_days == 90
+    assert prune(settings, engine) == 2
+    with sessions() as db:
+        kept = sorted(db.scalars(select(SearchEvent.query)).all())
+    assert kept == ["aged 5", "aged 89"]
+    assert prune(settings.model_copy(update={"search_event_retention_days": 30}), engine) == 1
 
 
 def test_categories_count_published_resources(seeded, client):
@@ -168,7 +206,10 @@ def test_example_catalog_seeds_cleanly(sessions, store):
     assert result["published_resources"] == result["created_resources"] > 4
 
 
-def test_filter_only_misses_and_later_pages_are_not_unmet_demand(seeded, client, sessions):
+def test_filter_only_misses_and_later_pages_are_not_unmet_demand(seeded, make_client, sessions):
+    client = make_client()
+    make_user(sessions, "reviewer@sliver.local", role="reviewer")
+    sign_in(client, "reviewer@sliver.local")
     assert search(client, q="berth", max_price_minor=100)["total"] == 0
     search(client, q="berth", offset=2)
     with sessions() as db:

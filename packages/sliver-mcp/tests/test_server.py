@@ -47,6 +47,24 @@ def test_tools_and_honest_use_instructions(server):
     ]
     for rule in ("before buying", "suggest looking elsewhere", "Never exceed it", "ask your human"):
         assert rule in server.instructions
+    assert "honest reason" in server.instructions and "never include wallet data" in server.instructions
+
+
+def test_buy_sends_the_reason_as_the_agent_note_through_the_protocol(server, stub):
+    async def schema():
+        async with Client(server) as client:
+            tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+            return tools["sliver_buy"]
+
+    tool = asyncio.run(schema())
+    properties, required = tool.input_schema["properties"], tool.input_schema.get("required", [])
+    assert "reason" in properties and "reason" not in required
+    assert "never include wallet data" in " ".join(tool.description.lower().split())
+
+    reason = "Weekly SGSIN-CNSHA spot rates to quote a shipment"
+    bought = call(server, "sliver_buy", {"resource_id": CHEAP, "budget_usd": 5, "reason": reason})
+    assert bought["status"] == "delivered"
+    assert [request.headers.get("X-Sliver-Agent-Note") for request in stub.data_requests] == [reason, reason]
 
 
 def test_search_evaluate_buy_and_list_purchases(server, stub):

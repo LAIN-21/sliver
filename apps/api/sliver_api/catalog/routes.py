@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query
 
+from ..auth.deps import CurrentUser
 from ..deps import DB
 from .search import MAX_PAGE_SIZE, CatalogQuery, get_published, list_categories, search_catalog, unmet_demand
 
@@ -48,7 +49,9 @@ def resource_detail(resource_id: Annotated[str, Path(max_length=36)], db: DB) ->
 @router.get("/demand")
 def demand(
     db: DB,
+    _user: CurrentUser,
     days: Annotated[int, Query(ge=1, le=90)] = 7,
     limit: Annotated[int, Query(ge=1, le=50)] = 20,
 ) -> dict:
+    """Unmet buyer demand. Raw search texts are for signed-in sellers and reviewers only (#35)."""
     return {"days": days, "items": unmet_demand(db, days, limit)}

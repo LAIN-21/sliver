@@ -63,6 +63,8 @@ def settings(database_url) -> Settings:
         s3_access_key_id=os.environ.get("S3_ACCESS_KEY_ID", "test"),
         s3_secret_access_key=os.environ.get("S3_SECRET_ACCESS_KEY", "test"),
         s3_bucket=os.environ.get("TEST_S3_BUCKET", "sliver-test"),
+        # Off by default so a test's request count never matters; test_ratelimit.py turns it on.
+        sliver_rate_limit_enabled=False,
     )
 
 

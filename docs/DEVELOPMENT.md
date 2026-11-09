@@ -66,7 +66,12 @@ Public endpoints:
 - `GET /api/catalog?q=&category=&max_price_minor=&columns=&limit=&offset=`: search published Resources (metadata only).
 - `GET /api/catalog/{id}`: one published Resource.
 - `GET /api/catalog/categories`: categories with counts.
-- `GET /api/demand?days=7`: searches that found nothing.
+
+`GET /api/demand?days=7` (searches that found nothing) needs a signed-in seller or reviewer and answers 401 otherwise. The worker deletes raw search events older than `SEARCH_EVENT_RETENTION_DAYS` (default 90).
+
+### Rate limits
+
+Each client IP gets a per-minute budget for `POST /api/auth/login` (`SLIVER_RATE_LIMIT_LOGIN_PER_MINUTE`, 20), `POST /api/seller/datasets` (`SLIVER_RATE_LIMIT_UPLOAD_PER_MINUTE`, 20), `GET /api/catalog` (`SLIVER_RATE_LIMIT_SEARCH_PER_MINUTE`, 300) and `GET /api/resources/{id}/data` without `PAYMENT-SIGNATURE` (`SLIVER_RATE_LIMIT_PAYMENT_PER_MINUTE`, 120). Over budget answers 429 with `Retry-After` in seconds. The budgets are in-process and reset when the API restarts; `make demo` and `make smoke-testnet` stay far below them. Set `SLIVER_RATE_LIMIT_ENABLED=false` to switch limiting off; the test settings do so, and `tests/test_ratelimit.py` turns it back on with small budgets. Browser requests reach the API through the Vite proxy, so locally they share the web container's address. Behind a reverse proxy, list it in `SLIVER_TRUSTED_PROXIES` so the limiter keys on the forwarded client address instead.
 
 ## Seller uploads and inspection
 

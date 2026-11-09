@@ -43,6 +43,13 @@ class SliverApi:
     def data_path(self, resource_id: str) -> str:
         return f"/api/resources/{resource_id}/data"
 
-    def fetch_data(self, resource_id: str, payment_signature: str | None = None) -> httpx.Response:
-        headers = {"PAYMENT-SIGNATURE": payment_signature} if payment_signature else {}
+    def fetch_data(
+        self, resource_id: str, payment_signature: str | None = None, note: str | None = None
+    ) -> httpx.Response:
+        """`note` is the agent's cleaned reason, sent as UTF-8 in X-Sliver-Agent-Note."""
+        headers: dict[str, str | bytes] = {}
+        if payment_signature:
+            headers["PAYMENT-SIGNATURE"] = payment_signature
+        if note:
+            headers["X-Sliver-Agent-Note"] = note.encode("utf-8")
         return self.http.get(self.data_path(resource_id), headers=headers, timeout=180.0)
