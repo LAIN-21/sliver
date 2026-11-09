@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from mcp import Client
 
-from conftest import BUYER, CUSTOM_CSV, CUSTOM_ID, FULL_BERTHS, SELLER
+from conftest import BUYER, CUSTOM_CSV, CUSTOM_ID, FULL_BERTHS
 from sliver_mcp import server as server_module
 from sliver_mcp.server import build_server
 from sliver_mcp.store import Store
@@ -155,12 +155,22 @@ def test_quoting_a_custom_slice_never_spends_and_the_quote_is_bought_like_any_sl
     assert quoted["resource_id"] == CUSTOM_ID and quoted["rows"] == 10 and quoted["price_usd"] == 0.24
     assert quoted["within_budget"] is True and quoted["new"] is True
     assert quoted["parent"]["id"] == FULL_BERTHS and "sliver_buy" in quoted["next"]
+    assert quoted["summary"] == (
+        "A custom slice of 'Singapore berth waiting times' by Harbour Analytics (demo seller): "
+        "10 rows × 2 columns (date, avg_berth_wait_hours), covering date 2026-10-01 to 2026-10-10, "
+        "for $0.24 (0.096 XRP on XRPL Testnet). Nothing has been spent; buy it only if your human agrees."
+    )
+    assert quoted["price_xrp"] == 0.096 and quoted["payment"]["amount_drops"] == "96000"
+    assert quoted["columns"] == ["date", "avg_berth_wait_hours"] and quoted["column_count"] == 2
+    assert quoted["parent"]["seller"] == "Harbour Analytics (demo seller)"
+    assert quoted["validity"]["price_fixed"] is True and "warning" not in quoted
+    assert "after they agree" in quoted["next"]
     assert dict(stub.quote_requests[0].url.params) == {"time_start": "2026-10-01", "time_end": "2026-10-10"}
     assert not stub.data_requests and not stub.payments  # quoting never touches the x402 path
 
     bought = call(server, "sliver_buy", {"resource_id": CUSTOM_ID, "budget_usd": 1})
     assert bought["status"] == "delivered" and bought["sha256_verified"] is True
-    assert bought["pay_to"] == SELLER.address and bought["price_usd"] == 0.24
+    assert bought["pay_to"] == stub.pay_to and bought["price_usd"] == 0.24
     assert Path(bought["file"]).read_bytes() == CUSTOM_CSV
 
 
@@ -201,3 +211,23 @@ def test_evaluate_suggests_a_custom_slice_through_the_protocol(server):
     assert suggestion["tool"] == "sliver_quote_slice" and suggestion["resource_id"] == FULL_BERTHS
     assert (suggestion["time_start"], suggestion["time_end"]) == ("2026-10-01", "2026-10-10")
     assert "sliver_quote_slice" in report["summary"] and report["spent"] == 0
+
+
+def test_a_quote_whose_xrp_amount_differs_from_the_local_rate_is_flagged(server, stub, config):
+    stub.drops_per_usd = 1
+    quoted = server_module.quote_summary(
+        201,
+        {"id": CUSTOM_ID, "row_count": 10, "price": {"amount_minor": 24}, "columns": [],
+         "payment": {"amount_drops": "1"}},
+        None,
+        config.drops_per_usd,
+    )  # fmt: skip
+    assert "sliver_buy will refuse" in quoted["warning"]
+    broken = server_module.quote_summary(200, {"id": CUSTOM_ID, "price": {"amount_minor": 0}}, None, 400_000)
+    assert broken["status"] == "error" and broken["spent"] == 0
+
+
+def test_instructions_require_the_humans_yes_before_buying_a_quote(server):
+    text = " ".join(server.instructions.split())
+    assert "ask whether it is worth it" in text and "only after your human says yes" in text
+    assert "Sliver never decides to spend" in text

@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from ..catalog.public import public_quote
 from ..deps import DB
 from ..models import User
+from ..payments.x402 import drops_for
 from . import custom
 
 router = APIRouter(tags=["custom slices"])
@@ -63,7 +64,21 @@ def quote_custom_slice(
             seller = db.get(User, resource.owner_id)
             seller_name = seller.display_name if seller else ""
             breakdown = custom.price_breakdown(resource)
-            body = public_quote(resource, parent, seller_name, breakdown, created)
+            settings = request.app.state.settings
+            payment = {
+                "network": settings.xrpl_network,
+                "asset": "XRP",
+                "amount_drops": drops_for(resource.price_minor, settings.drops_per_usd),
+                "drops_per_usd": settings.drops_per_usd,
+            }
+            validity = {
+                # The slice and its price never change while the parent listing stays published.
+                "expires_at": None,
+                "price_fixed": True,
+                # Each purchase attempt gets a fresh x402 invoice that must be paid within this.
+                "invoice_timeout_seconds": settings.payment_timeout_seconds,
+            }
+            body = public_quote(resource, parent, seller_name, breakdown, created, payment, validity)
             db.commit()
         except custom.Refused as error:
             db.rollback()

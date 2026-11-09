@@ -122,6 +122,21 @@ def test_a_quote_cuts_exactly_the_requested_rows(listed, client, store, sessions
         "protocol": "x402",
     }
     assert response.headers["cache-control"] == "no-store"
+    assert body["column_count"] == 5 and [column["name"] for column in body["columns"]] == [
+        "date",
+        "terminal",
+        "berth_class",
+        "avg_wait_hours",
+        "agent_email",
+    ]
+    assert body["seller"] == {"name": "seller"}  # the account make_user created first
+    assert body["payment"] == {
+        "network": "xrpl:1",
+        "asset": "XRP",
+        "amount_drops": "392000",
+        "drops_per_usd": 400_000,
+    }
+    assert body["validity"] == {"expires_at": None, "price_fixed": True, "invoice_timeout_seconds": 600}
 
     with sessions() as db:
         resource = db.get(Resource, body["id"])
@@ -143,14 +158,14 @@ def test_a_quote_cuts_exactly_the_requested_rows(listed, client, store, sessions
 def test_a_quote_reveals_counts_coverage_price_and_hash_never_row_values(listed, client):
     body = quote(client, listed["full"], **FIRST_TEN_TUAS).json()
     assert set(body) == {
-        "id", "created", "parent", "filter", "row_count", "coverage", "price", "price_breakdown",
-        "seller", "content", "purchase",
+        "id", "created", "parent", "filter", "row_count", "columns", "column_count", "coverage", "price",
+        "payment", "validity", "price_breakdown", "seller", "content", "purchase",
     }  # fmt: skip
     text = json.dumps(body)
     for row in berth_rows()[:20]:
         _day, _terminal, berth, wait, agent = row.split(",")
         assert wait not in text and agent not in text
-    assert "berth_class" not in text
+    assert "filterable" not in text and "agent_email" in text  # column names are public; values never
 
 
 def test_identical_requests_return_the_same_resource(listed, client, sessions):
@@ -261,11 +276,17 @@ def test_the_seller_toggle_and_publication_gate_quotes(listed, client, sessions)
     assert error(quote(client, listed["full"], **FIRST_TEN_TUAS))["code"] == "not_published"
 
 
-def test_a_seller_without_a_payout_address_cannot_be_quoted(listed, client, sessions):
+def test_the_payment_path_not_the_quote_decides_whether_a_slice_can_be_paid(listed, client, sessions):
     with sessions() as db:
         db.scalar(select(User).where(User.email == SELLER_EMAIL)).xrpl_address = None
         db.commit()
-    assert error(quote(client, listed["full"], **FIRST_TEN_TUAS))["code"] == "seller_cannot_receive"
+    derived = quote(client, listed["full"], **FIRST_TEN_TUAS)
+    assert derived.status_code == 201
+    # Whatever the unchanged x402 path answers for the parent, it answers for the custom slice.
+    parent = client.get(f"/api/resources/{listed['full']}/data")
+    custom_slice = client.get(f"/api/resources/{derived.json()['id']}/data")
+    assert custom_slice.status_code == parent.status_code
+    assert custom_slice.json()["error"]["code"] == parent.json()["error"]["code"]
 
 
 def test_a_tampered_source_object_is_never_cut(listed, client, sessions, store):
@@ -428,13 +449,14 @@ def market(settings, engine, store):
         yield client, ledger
 
 
-def test_a_custom_slice_is_bought_with_x402_and_pays_the_same_seller(
+def test_a_custom_slice_is_bought_with_x402_and_counts_as_the_sellers_sale(
     listed, market, make_client, sessions, store
 ):
     buyer, ledger = market
     body = quote(buyer, listed["full"], **FIRST_TEN_TUAS).json()
     accepted = harness.challenge(buyer, body["id"]).json()["accepts"][0]
-    assert accepted["payTo"] == harness.SELLER.address
+    # The payee is whatever the payment path issues for any sale of this seller's listings.
+    assert accepted["payTo"] == harness.challenge(buyer, listed["full"]).json()["accepts"][0]["payTo"]
     assert accepted["amount"] == str(98 * 400_000 // 100)
 
     response, signed, _ = harness.pay(buyer, body["id"], ledger)
@@ -501,3 +523,16 @@ def test_the_seller_chooses_at_publication_whether_custom_slices_are_offered(
         assert refused.status_code != 409 or error(refused)["code"] != "custom_slices_disabled"
     else:
         assert refused.status_code == 409 and error(refused)["code"] == "custom_slices_disabled"
+
+
+def test_custom_slices_stay_out_of_the_x402_directory_but_are_bought_by_id(listed, market, sessions):
+    buyer, ledger = market
+    derived = quote(buyer, listed["full"], **FIRST_TEN_TUAS).json()["id"]
+    directory = buyer.get("/.well-known/x402").json()["items"]
+    urls = {item["url"].rsplit("/api/resources/", 1)[1] for item in directory}
+    assert f"{derived}/data" not in urls
+    assert {f"{listed[key]}/data" for key in ("full", "September 2026", "October 2026")} <= urls
+    response, _signed, _ = harness.pay(buyer, derived, ledger)
+    assert response.status_code == 200, response.text
+    with sessions() as db:
+        assert hashlib.sha256(response.content).hexdigest() == db.get(Resource, derived).sha256

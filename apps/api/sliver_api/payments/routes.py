@@ -80,7 +80,8 @@ def x402_directory(request: Request, db: DB) -> dict:
     rows = db.execute(
         select(Resource)
         .join(User, Resource.owner_id == User.id)
-        .where(Resource.status == "published", User.xrpl_address.is_not(None))
+        # Buyer-defined custom slices (#39) are unlisted: sold by id, never listed here.
+        .where(Resource.status == "published", Resource.parent_id.is_(None), User.xrpl_address.is_not(None))
         .order_by(Resource.published_at.desc())
         .limit(200)
     ).scalars()

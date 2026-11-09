@@ -201,8 +201,8 @@ function Publish({
           <span className="font-medium">Allow custom slices</span>
           <span className="mt-0.5 block text-muted">
             Agents may ask for just the rows they need (a date range or one category value). Sliver cuts them from your
-            full dataset and prices them per row from your full-dataset price, never above it. You are paid directly, like
-            any sale. This choice is fixed once you publish.
+            full dataset and prices them per row from your full-dataset price, never above it. Each sale counts toward your
+            earnings like any other. This choice is fixed once you publish.
           </span>
         </span>
       </label>

@@ -76,17 +76,31 @@ PUBLIC_BREAKDOWN_FIELDS = (
 
 
 def public_quote(
-    resource: Resource, parent: Resource, seller_name: str, breakdown: dict, created: bool
+    resource: Resource,
+    parent: Resource,
+    seller_name: str,
+    breakdown: dict,
+    created: bool,
+    payment: dict,
+    validity: dict,
 ) -> dict:
-    """The answer to a custom-slice quote: what will be sold, for how much and how to verify it."""
+    """The answer to a custom-slice quote: what will be sold, for how much and how to verify it.
+
+    `payment` is the XRP amount at the disclosed demo rate; `validity` says how long it holds.
+    Enough for an agent to tell its human "$X for N rows × M columns" before buying.
+    """
     return {
         "id": resource.id,
         "created": created,
         "parent": {"id": parent.id, "title": parent.title},
         "filter": dict(resource.custom_filter or {}),
         "row_count": resource.row_count,
+        "columns": [{"name": column["name"], "type": column["type"]} for column in resource.columns],
+        "column_count": len(resource.columns),
         "coverage": public_coverage(resource.coverage),
         "price": {"amount_minor": resource.price_minor, "currency": resource.currency},
+        "payment": payment,
+        "validity": validity,
         "price_breakdown": {key: breakdown[key] for key in PUBLIC_BREAKDOWN_FIELDS if key in breakdown},
         "seller": {"name": seller_name},
         "content": {"sha256": resource.sha256, "size_bytes": resource.size_bytes, "format": "text/csv"},

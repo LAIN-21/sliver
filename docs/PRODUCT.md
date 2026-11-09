@@ -19,7 +19,7 @@ The initial seller focus is structured uploaded datasets.
 
 Enterprise and API integrations are a later input mechanism into the same Resource marketplace.
 
-Buyers pay for the slice their question needs. Besides the slivers a seller publishes, a buyer's agent may ask for a custom slice of a published dataset (a time range and/or one value of a category column): Sliver cuts exactly those rows, prices them per row from the seller's published full-dataset price, never above it, and sells them like any sliver, paid to the same seller. Sellers choose at publication whether to offer custom slices (on by default). Asking for a quote never spends; the buyer's agent still decides whether to buy.
+Buyers pay for the slice their question needs. Besides the slivers a seller publishes, a buyer's agent may ask for a custom slice of a published dataset (a time range and/or one value of a category column): Sliver cuts exactly those rows, prices them per row from the seller's published full-dataset price, never above it, and sells them like any sliver: the sale is credited to the same seller. Sellers choose at publication whether to offer custom slices (on by default). Asking for a quote never spends; the buyer's agent still decides whether to buy.
 
 Pricing considers both coverage and value. Sliver suggests an explainable price for each sliver from its quality, uniqueness against the catalog, unmet buyer demand, public availability and coverage; the seller accepts or overrides it before publishing. The formula is an architecture question, not a product invariant. See [ARCHITECTURE.md](ARCHITECTURE.md).
 

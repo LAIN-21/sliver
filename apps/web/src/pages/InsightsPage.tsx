@@ -33,8 +33,9 @@ function Insights() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const latest = useRef(0);
   const owned = useRef(new Set<string>());
-  // Custom slices are created after this page loads, so a delivery paid to this seller counts too.
-  const payout = useRef<string | null>(null);
+  // Custom slices are created after this page loads: a delivery of an unknown sliver reloads once,
+  // and the reload says whether it is this seller's.
+  const foreign = useRef(new Set<string>());
   const loaded = useRef(false);
   const now = useNow();
 
@@ -44,7 +45,6 @@ function Insights() {
       .then((insights) => {
         if (request !== latest.current) return; // a newer reload is on its way
         owned.current = new Set(insights.resource_ids);
-        payout.current = insights.payout_address;
         loaded.current = true;
         setRefreshError(null);
         setState({ kind: "ready", insights });
@@ -68,8 +68,13 @@ function Insights() {
   const onEvent = useCallback(
     (event: ActivityEvent) => {
       // A new delivery of one of this seller's slivers (a replay charges nothing new).
-      const mine = owned.current.has(event.resource.id) || (payout.current !== null && event.pay_to === payout.current);
-      if (event.type === "delivered" && event.detail !== "replay" && mine) load();
+      if (event.type !== "delivered" || event.detail === "replay") return;
+      const id = event.resource.id;
+      if (owned.current.has(id)) load();
+      else if (!foreign.current.has(id)) {
+        foreign.current.add(id);
+        load();
+      }
     },
     [load],
   );

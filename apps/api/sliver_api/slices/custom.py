@@ -4,8 +4,9 @@ A buyer's agent asks for exactly the rows it needs from a published full-dataset
 range on the dataset's time column and/or equality on its slice column or another low-cardinality,
 non-personal text column. Sliver cuts those rows from the parent's stored object (SHA-256
 checked), prices them with `valuation.custom_slice_price` and stores them as a derived Resource:
-published, so the unchanged x402 path (`GET /api/resources/{id}/data`) sells it and pays the same
-seller, but unlisted, so it never appears in search, categories or demand.
+published, so the unchanged x402 path (`GET /api/resources/{id}/data`) sells it, with whatever
+payee and fee rules that path applies, and the sale counts for the same seller, but unlisted, so
+it never appears in search, categories, demand or the x402 directory.
 
 What may be filtered follows the leak rules the pipeline already applies to public text
 (`pipeline/leakguard.py`): the time column only when the privacy scan did not flag it, and
@@ -30,7 +31,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import slicing, valuation
-from ..models import Dataset, PipelineStep, Resource, User, is_full_dataset, utcnow
+from ..models import Dataset, PipelineStep, Resource, is_full_dataset, utcnow
 from ..pipeline.leakguard import TEMPORAL, flagged_columns, is_categorical
 from ..pipeline.privacy import scan_column
 from ..pipeline.profile import profile_column
@@ -272,7 +273,7 @@ def read_parent(store: ObjectStore, parent: Resource) -> Table:
     return read_table(data)
 
 
-def checked_parent(db: Session, resource_id: str) -> tuple[Resource, Dataset, User]:
+def checked_parent(db: Session, resource_id: str) -> tuple[Resource, Dataset]:
     """The full-dataset Resource to cut from, locked so quotes for one parent run one at a time."""
     parent = db.scalar(select(Resource).where(Resource.id == resource_id).with_for_update())
     if parent is None or parent.status != "published":
@@ -303,10 +304,8 @@ def checked_parent(db: Session, resource_id: str) -> tuple[Resource, Dataset, Us
         raise Refused(
             409, "custom_slices_disabled", "The seller does not offer custom slices of this dataset."
         )
-    seller = db.get(User, parent.owner_id)
-    if seller is None or not seller.xrpl_address:
-        raise Refused(409, "seller_cannot_receive", "This seller has no XRPL address yet.")
-    return parent, dataset, seller
+    # Who is paid, and whether a sale is possible right now, is the payment path's decision.
+    return parent, dataset
 
 
 def quote(
@@ -319,7 +318,7 @@ def quote(
     where: dict[str, str] | None = None,
 ) -> tuple[Resource, Resource, bool]:
     """(custom slice, parent, created). Raises `Refused`; the caller rolls back."""
-    parent, dataset, _seller = checked_parent(db, resource_id)
+    parent, dataset = checked_parent(db, resource_id)
     siblings = list(
         db.scalars(
             select(Resource).where(

@@ -183,8 +183,17 @@ class StubSliver:
             "parent": {"id": resource_id, "title": listing["title"]},
             "filter": {"time": {"column": "date", "start": "2026-10-01", "end": "2026-10-10"}},
             "row_count": 10,
+            "columns": listing["columns"],
+            "column_count": len(listing["columns"]),
             "coverage": self.listings[CUSTOM_ID]["coverage"],
             "price": {"amount_minor": 24, "currency": "USD"},
+            "payment": {
+                "network": "xrpl:1",
+                "asset": "XRP",
+                "amount_drops": "96000",
+                "drops_per_usd": 400_000,
+            },
+            "validity": {"expires_at": None, "price_fixed": True, "invoice_timeout_seconds": 600},
             "price_breakdown": {
                 "price_minor": 24,
                 "reference_price_minor": 1200,
