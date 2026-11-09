@@ -49,9 +49,11 @@ def summary(listing: dict[str, Any]) -> dict[str, Any]:
 
 
 def refusal(error: Exception) -> dict[str, Any]:
+    if isinstance(error, Refused) and error.paid:
+        return {"status": "paid_not_completed", "code": error.code, "message": error.message, **error.paid}
     if isinstance(error, Refused):
         return {"status": "refused", "code": error.code, "message": error.message, "spent": 0}
-    return {"status": "error", "message": str(error), "spent": 0}
+    return {"status": "error", "message": str(error), "hint": "Check sliver_purchases before retrying."}
 
 
 def build_server(config: Config, *, api: SliverApi | None = None, buyer: Buyer | None = None) -> MCPServer:

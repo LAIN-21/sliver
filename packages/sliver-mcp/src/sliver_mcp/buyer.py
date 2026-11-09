@@ -41,9 +41,12 @@ RETRYABLE = frozenset({"settlement_pending", "settlement_status_unknown"})
 
 
 class Refused(Exception):
-    def __init__(self, code: str, message: str):
+    """A purchase that did not complete. `paid` is set when a signed payment already left this
+    machine, so the caller is never told that nothing was spent."""
+
+    def __init__(self, code: str, message: str, *, paid: dict[str, Any] | None = None):
         super().__init__(message)
-        self.code, self.message = code, message
+        self.code, self.message, self.paid = code, message, paid
 
 
 class Signer(Protocol):
@@ -71,9 +74,10 @@ def check_resource_id(resource_id: str) -> str:
 
 def error_code(response: httpx.Response) -> tuple[str, str]:
     try:
-        error = response.json().get("error") or {}
+        body = response.json()
     except ValueError:
         return "http_error", response.text[:300]
+    error = (body.get("error") or {}) if isinstance(body, dict) else {}
     if isinstance(error, dict):
         return str(error.get("code", "http_error")), str(error.get("message", ""))
     return str(error), ""
@@ -133,6 +137,8 @@ class Buyer:
             listing = self.api.listing(resource_id)
         except ApiError as error:
             raise Refused("listing_unavailable", str(error)) from None
+        if listing.get("id") != resource_id:
+            raise Refused("bad_listing", "The API returned a listing for a different resource id.")
         price_minor = (listing.get("price") or {}).get("amount_minor")
         if (
             type(price_minor) is not int
@@ -170,7 +176,7 @@ class Buyer:
             amount_drops = drops_for(price_minor, self.config.drops_per_usd)
             requirement = select_requirement(required, amount_drops=amount_drops, pay_to=pay_to)
             signed = signer.sign(requirement)
-        except PaymentRejected as error:
+        except (PaymentRejected, ValueError) as error:
             raise Refused("challenge_rejected", f"Refused to sign: {error}") from None
 
         tx_hash = signed.get_hash()
@@ -196,6 +202,12 @@ class Buyer:
         if not pinned:
             self.store.pin_payee(self.payee_key(listing), pay_to)
 
+        paid = {
+            "spent_usd": price_minor / 100,
+            "tx_hash": tx_hash,
+            "explorer_url": explorer_url(tx_hash),
+            "purchase_id": record["id"],
+        }
         response = self.send(resource_id, header)
         if response is None or response.status_code != 200:
             code, message = (
@@ -207,6 +219,7 @@ class Buyer:
                 "payment_not_delivered",
                 f"Payment {tx_hash} was sent but the data was not delivered ({code}: {message}). "
                 f"Check {explorer_url(tx_hash)} before retrying; it counts toward the daily cap.",
+                paid=paid,
             )
 
         settlement: dict[str, Any] = {}
@@ -216,18 +229,27 @@ class Buyer:
             pass
         digest = hashlib.sha256(response.content).hexdigest()
         verified = digest == (listing.get("content") or {}).get("sha256")
-        path = self.save(output_dir, resource_id, response.content, verified)
         receipt_id = response.headers.get("X-Sliver-Receipt")
-        receipt = self.api.receipt(receipt_id) if receipt_id else None
         record.update(
-            status="delivered" if verified else "delivered_unverified",
-            file=str(path),
             sha256=digest,
             sha256_verified=verified,
             settled_transaction=settlement.get("transaction"),
             receipt_id=receipt_id,
         )
+        try:
+            path = self.save(output_dir, resource_id, response.content, verified)
+        except OSError as error:
+            record.update(status="delivered_unsaved", error=f"save failed: {error}"[:500])
+            self.store.save_purchase(record)
+            raise Refused(
+                "save_failed",
+                f"Payment {tx_hash} was delivered but the file could not be saved to {output_dir} "
+                f"({error}). It counts toward the daily cap; tell your human before buying again.",
+                paid=paid,
+            ) from None
+        record.update(status="delivered" if verified else "delivered_unverified", file=str(path))
         self.store.save_purchase(record)
+        receipt = self.api.receipt(receipt_id) if receipt_id else None  # best effort, after the record
         result = {
             "status": record["status"],
             "resource_id": resource_id,

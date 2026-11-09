@@ -2,6 +2,7 @@ import hashlib
 import threading
 from pathlib import Path
 
+import httpx
 import pytest
 from xrpl.wallet import Wallet
 
@@ -134,3 +135,35 @@ def test_state_files_are_owner_only(buyer, config):
     assert config.home.stat().st_mode & 0o777 == 0o700
     for name in ("purchases.json", "payees.json"):
         assert (config.home / name).stat().st_mode & 0o777 == 0o600
+
+
+def test_refuses_a_listing_for_a_different_resource_id(buyer, stub, signer):
+    stub.listings[CHEAP]["id"] = CUSTOMS
+    assert refused(buyer, CHEAP, budget_usd=5) == "bad_listing"
+    assert signer.signed == 0
+
+
+def test_a_non_json_challenge_is_refused_before_signing(buyer, stub, signer):
+    stub.overrides["/api/resources/"] = httpx.Response(402, text="not json")
+    assert refused(buyer, CHEAP, budget_usd=5) == "challenge_rejected"
+    stub.overrides["/api/resources/"] = httpx.Response(500, json=["not", "an", "object"])
+    assert refused(buyer, CHEAP, budget_usd=5) == "http_error"
+    assert signer.signed == 0
+
+
+def test_a_non_json_receipt_does_not_lose_the_delivery(buyer, stub):
+    stub.overrides["/api/receipts/"] = httpx.Response(200, text="<html>")
+    result = buyer.buy(CHEAP, budget_usd=5)
+    assert result["status"] == "delivered" and result["receipt"] is None
+    assert buyer.store.purchases()[0]["status"] == "delivered"
+
+
+def test_a_save_failure_after_payment_reports_the_spend(buyer, tmp_path):
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("x")
+    with pytest.raises(Refused) as caught:
+        buyer.buy(CHEAP, budget_usd=5, output_dir=str(blocked))
+    assert caught.value.code == "save_failed"
+    assert caught.value.paid["spent_usd"] == 1.5 and caught.value.paid["tx_hash"]
+    assert buyer.store.purchases()[0]["status"] == "delivered_unsaved"
+    assert buyer.store.spent_minor() == 150

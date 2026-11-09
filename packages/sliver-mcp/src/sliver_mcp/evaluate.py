@@ -49,6 +49,15 @@ def parse_day(value: str, *, end: bool) -> date:
     return date(*parts[:3])
 
 
+def requested_day(value: str | None, name: str, *, end: bool) -> date | None:
+    if not value:
+        return None
+    try:
+        return parse_day(value, end=end)
+    except ValueError:
+        raise ValueError(f"{name} must be YYYY, YYYY-MM or YYYY-MM-DD, got {value!r}") from None
+
+
 def listing_text(listing: dict[str, Any]) -> str:
     coverage = listing.get("coverage") or {}
     pieces = [
@@ -90,7 +99,7 @@ def evaluate_listing(
     blockers: list[str] = []  # it covers the need, but the buyer should not buy it now
     notes: list[str] = []
 
-    columns = {column_key(column["name"]) for column in listing.get("columns") or []}
+    columns = {column_key(column.get("name", "")) for column in listing.get("columns") or []}
     missing_columns = [name for name in required_columns if column_key(name) not in columns]
     if missing_columns:
         gaps.append(f"missing required columns: {', '.join(missing_columns)}")
@@ -110,14 +119,17 @@ def evaluate_listing(
     time_overlap = None
     if time_start or time_end:
         window = (listing.get("coverage") or {}).get("time") or {}
-        if not window.get("start") or not window.get("end"):
-            gaps.append("no declared time coverage to compare with the requested range")
+        try:
+            have_start = parse_day(str(window["start"]), end=False)
+            have_end = parse_day(str(window["end"]), end=True)
+        except (KeyError, TypeError, ValueError):
+            have_start = have_end = None
+        if have_start is None or have_end is None:
+            gaps.append("no readable time coverage to compare with the requested range")
         else:
-            have_start = parse_day(window["start"], end=False)
-            have_end = parse_day(window["end"], end=True)
             # An open side of the requested range means "whatever the listing has".
-            want_start = parse_day(time_start, end=False) if time_start else have_start
-            want_end = parse_day(time_end, end=True) if time_end else have_end
+            want_start = requested_day(time_start, "time_start", end=False) or have_start
+            want_end = requested_day(time_end, "time_end", end=True) or have_end
             overlap = (min(want_end, have_end) - max(want_start, have_start)).days + 1
             requested = (want_end - want_start).days + 1
             time_overlap = round(max(overlap, 0) / max(requested, 1), 3)
@@ -165,6 +177,8 @@ def evaluate_listing(
 
 
 def evaluate(listings: list[dict[str, Any]], *, need: str, today: date, **criteria: Any) -> dict[str, Any]:
+    requested_day(criteria.get("time_start"), "time_start", end=False)  # clear error before any listing
+    requested_day(criteria.get("time_end"), "time_end", end=True)
     reports = [evaluate_listing(listing, need=need, today=today, **criteria) for listing in listings]
     rank = {"buy": 0, "skip": 1, "look_elsewhere": 2}
     reports.sort(key=lambda r: (rank[r["verdict"]], -r["score"], r["price_usd"] or 0, r["title"] or ""))

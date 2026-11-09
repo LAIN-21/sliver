@@ -113,3 +113,11 @@ def test_a_wallet_file_readable_by_others_is_refused(tmp_path):
     os.chmod(tmp_path / "home" / "wallet.json", 0o644)
     with pytest.raises(WalletMissing, match="chmod 600"):
         load_wallet(store, env={})
+
+
+def test_a_failure_after_payment_is_not_reported_as_nothing_spent(server, tmp_path):
+    blocked = tmp_path / "file"
+    blocked.write_text("x")
+    result = call(server, "sliver_buy", {"resource_id": CHEAP, "budget_usd": 5, "output_dir": str(blocked)})
+    assert result["status"] == "paid_not_completed" and result["code"] == "save_failed"
+    assert result["spent_usd"] == 1.5 and result["tx_hash"] and "spent" not in result

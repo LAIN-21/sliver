@@ -109,9 +109,13 @@ class StubSliver:
         self.invoices: dict[str, dict] = {}
         self.payments: list[dict] = []  # signed transactions the facilitator saw
         self.receipts: dict[str, dict] = {}
+        self.overrides: dict[str, httpx.Response] = {}  # path prefix -> canned (malformed) response
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        for prefix, response in self.overrides.items():
+            if path.startswith(prefix):
+                return response
         if path == "/api/catalog":
             q = set(request.url.params.get("q", "").lower().split())
             items = [

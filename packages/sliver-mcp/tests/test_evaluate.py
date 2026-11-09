@@ -1,6 +1,8 @@
 import copy
 from datetime import date
 
+import pytest
+
 from conftest import LISTINGS
 from sliver_mcp.evaluate import evaluate, terms
 
@@ -77,3 +79,19 @@ def test_evaluation_is_deterministic():
 
 def test_terms_ignore_stopwords_and_plurals():
     assert terms("The rates for containers from Singapore") == ["rate", "container", "singapore"]
+
+
+def test_an_invalid_requested_time_range_is_a_clear_error():
+    with pytest.raises(ValueError, match="time_start must be YYYY, YYYY-MM or YYYY-MM-DD"):
+        run("container spot freight rates", time_start="2026-13")
+
+
+def test_malformed_listing_metadata_is_a_gap_not_a_crash():
+    broken = copy.deepcopy(LISTINGS)
+    broken[0]["coverage"]["time"] = {"start": "last summer", "end": "2026-10-26"}
+    broken[1]["columns"].append({"type": "text"})
+    report = run("container spot freight rates", listings=broken, time_start="2026-09")
+    freight = next(c for c in report["candidates"] if c["resource_id"] == LISTINGS[0]["id"])
+    assert freight["verdict"] == "look_elsewhere"
+    assert "no readable time coverage to compare with the requested range" in freight["reasons"]
+    assert len(report["candidates"]) == len(LISTINGS)

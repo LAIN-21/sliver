@@ -19,7 +19,7 @@ except ImportError:  # Windows
     fcntl = None
 
 # Statuses where a signed payment left this machine and may have moved funds.
-SPENDING_STATUSES = frozenset({"pending", "delivered", "delivered_unverified", "failed"})
+SPENDING_STATUSES = frozenset({"pending", "delivered", "delivered_unverified", "delivered_unsaved", "failed"})
 
 
 class PurchaseInFlight(RuntimeError):
@@ -56,8 +56,16 @@ class Store:
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as handle:
             json.dump(value, handle, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())  # the spend ledger must survive a crash after a payment
         os.chmod(temporary, 0o600)
         os.replace(temporary, path)
+        if hasattr(os, "O_DIRECTORY"):
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
         return path
 
     # Spend ledger

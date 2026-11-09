@@ -14,6 +14,6 @@ Additional constraints for payments (`apps/api/sliver_api/payments`) and the buy
 Buyer side (`packages/`), which runs on the buyer's machine, not on Sliver:
 
 - The buyer's seed stays on the buyer's machine: never return it from a tool, log it, or send it anywhere. Wallet and state files are owner-only (0600 in a 0700 `~/.sliver/`).
-- Never sign before the challenge matches the listing: Testnet `xrpl:1` XRP only, amount equal to the listing's USD price converted at the disclosed rate (rounded up, as the server does), payee equal to the seller's pinned address.
+- Never sign before the challenge matches the listing: Testnet `xrpl:1` XRP only, amount equal to the listing's USD price converted at the disclosed rate (rounded up, as the server does), payee equal to the seller's pinned address. The first purchase from a seller has no pin: it trusts the challenge's payee and pins it, because the catalog does not publish payee addresses yet.
 - Keep the signed Payment to the XRPL `exact` scheme: `InvoiceID = SHA-256(invoiceId)`, `SourceTag` from the challenge, bounded `LastLedgerSequence`, capped fee, and no Memos, SendMax, DeliverMin, Paths or partial-payment flag. Keep the field allow-list in `sliver_x402/payment.py`.
 - `sliver_buy` must refuse without a budget, over the budget or a local cap, or while another purchase is in flight. Extend the policy tests when rules change.

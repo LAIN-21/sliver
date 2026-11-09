@@ -23,7 +23,10 @@ class SliverApi:
             raise ApiError(f"Not found: {path}")
         if response.status_code >= 400:
             raise ApiError(f"Sliver API answered {response.status_code} for {path}: {response.text[:300]}")
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            raise ApiError(f"Sliver API returned a non-JSON body for {path}") from None
 
     def search(self, **params: Any) -> dict[str, Any]:
         return self.get_json("/api/catalog", **params)
