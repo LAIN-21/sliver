@@ -19,6 +19,7 @@ Start from a freshly seeded stack so the timeline shows only the demo purchase.
 3. Prepare the seller CSV for scene 2. It must not duplicate a seeded dataset: the duplicates stage flags exact and near copies of published data and sends them to the reviewer. It should also be accepted automatically (quality score of at least 70, no blocking findings), because only an accepted dataset can be priced and published. Rehearse the upload once before the final `make dev-reset` to check this.
 4. Open browser tabs: http://127.0.0.1:5173/sell/login, http://127.0.0.1:5173/activity, and https://testnet.xrpl.org. After signing in, open http://127.0.0.1:5173/sell/insights in a fourth tab; it updates live, so leave it open through scene 6.
 5. **Never show `.env`, a wallet seed, `~/.sliver/wallet.json`, an API key or a password on screen.** Type the seller password off camera or blur it. `sliver_wallet` shows only the address and balance, so it is safe to show.
+6. If you record a `make demo` run, check its step 3 output. "accepted automatically" is the normal case. If it prints that `reviewer@sliver.local` approved the upload, Claude's quality score was just under the auto-accept threshold with no blocking finding, and the demo's scripted reviewer account approved it. Either re-run `make demo` until it is accepted automatically, or narrate it as it happened (see scene 3).
 
 ## Shot list
 
@@ -61,6 +62,8 @@ Start from a freshly seeded stack so the timeline shows only the demo purchase.
 Optional 5-second cutaway: an earlier upload of `examples/seller/customer-contacts-pii.csv`, showing privacy findings that name columns and row numbers but never the values, and the dataset sent to the reviewer queue.
 
 **Narration:** "A pipeline validates and profiles the table, scans it for personal data, and checks it against the catalog for duplicates. Then Claude writes the public listing and decides how to slice it. Claude only sees the schema, a profile and up to twenty redacted rows. It can send a dataset to a human reviewer, but it can never approve one. Each slice becomes its own file with its own hash."
+
+If the recorded run was approved by the demo reviewer rather than accepted automatically, add: "Claude's score was just under the auto-accept threshold, so the reviewer account approved it, here scripted by `make demo`. An upload with a blocking privacy, duplicate or sensitivity finding can never be approved this way."
 
 ### 4. Price and publish (1:10–1:25)
 

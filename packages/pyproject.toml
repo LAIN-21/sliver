@@ -17,7 +17,8 @@ package = false
 members = ["sliver-x402", "sliver-mcp"]
 
 [tool.pytest.ini_options]
-testpaths = ["sliver-x402/tests", "sliver-mcp/tests"]
+# ../scripts/tests: the pure parts of `make demo`, which runs the MCP's buyer code.
+testpaths = ["sliver-x402/tests", "sliver-mcp/tests", "../scripts/tests"]
 addopts = "-p no:cacheprovider"
 
 [tool.ruff]
