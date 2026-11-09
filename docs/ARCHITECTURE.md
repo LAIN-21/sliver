@@ -16,7 +16,7 @@ This document records system-level decisions, assumptions, and open questions. P
 - Sliver is intended to support settlement through the XRP Ledger.
 - The API and pipeline worker use Python 3.13, FastAPI 0.115.x, SQLAlchemy 2 and Alembic; the web app uses React, TypeScript, Vite and Tailwind CSS. See [ADR 0003](adr/0003-application-stack-and-local-containers.md).
 - Local development runs entirely in Docker Compose: PostgreSQL, MinIO, API, worker and web, published on 127.0.0.1 only.
-- Background jobs are PostgreSQL rows claimed with `FOR UPDATE SKIP LOCKED`; there is no queue service.
+- Background jobs will be PostgreSQL rows claimed with `FOR UPDATE SKIP LOCKED`; there is no queue service. The worker does not claim jobs yet; claiming arrives with the first pipeline stage (#13).
 
 ## Current assumptions
 
