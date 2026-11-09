@@ -33,7 +33,15 @@ export type HealthStatus = {
 };
 
 function isHealth(body: unknown): body is HealthStatus {
-  return typeof body === "object" && body !== null && "checks" in body;
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    "status" in body &&
+    (body.status === "ok" || body.status === "degraded") &&
+    "checks" in body &&
+    typeof body.checks === "object" &&
+    body.checks !== null
+  );
 }
 
 export type CatalogFilters = { q?: string; category?: string; maxPriceMinor?: number };
@@ -54,7 +62,10 @@ export function getResource(id: string, signal?: AbortSignal): Promise<PublicRes
   return request<PublicResource>(`/catalog/${encodeURIComponent(id)}`, { signal });
 }
 
-export function getHealth(signal?: AbortSignal): Promise<HealthStatus> {
+export async function getHealth(signal?: AbortSignal): Promise<HealthStatus> {
   // A degraded API answers 503 with the same body, which is still useful to show.
-  return request<HealthStatus>("/health", { signal });
+  const body = await request<unknown>("/health", { signal });
+  // Without the /api proxy (e.g. `vite preview`) the SPA fallback answers 200 with HTML.
+  if (!isHealth(body)) throw new ApiError(0, "The Sliver API did not return a health report.");
+  return body;
 }

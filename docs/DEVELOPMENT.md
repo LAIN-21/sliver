@@ -79,7 +79,7 @@ Public endpoints:
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on pull requests and on `main`:
+`.github/workflows/ci.yml` runs on pull requests, on pushes to `main`, and in merge queues:
 
 - Shell scripts, workflows and Compose configuration checks (shellcheck, actionlint, `docker compose config`).
 - API lint and tests against a PostgreSQL service.

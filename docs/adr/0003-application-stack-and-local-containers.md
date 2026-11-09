@@ -18,7 +18,7 @@ This ADR records the stack the repository owner approved with the build plan on 
 - **API and worker:** Python 3.13, FastAPI 0.115.x, SQLAlchemy 2 with Alembic migrations, psycopg 3, boto3 for S3-compatible storage. Dependencies are locked with uv. The API is an application factory (`uvicorn --factory sliver_api.main:create_app`). The worker uses the same image.
 - **Web:** React 19, TypeScript, Vite and Tailwind CSS, served by the Vite dev server, which proxies `/api` to the API so browser requests stay same-origin.
 - **Local topology:** Docker Compose runs `postgres`, `minio`, `api`, `worker` and `web`. Every published port binds to 127.0.0.1. Named volumes `postgres_data` and `minio_data` hold persisted state. The API applies migrations on start; the worker starts after the API is healthy.
-- **No queue service:** background jobs are rows in PostgreSQL claimed with `SELECT … FOR UPDATE SKIP LOCKED` by the worker. This needs no new infrastructure and is enough for pipeline jobs at demo and early production scale.
+- **No queue service:** background jobs will be rows in PostgreSQL claimed with `SELECT … FOR UPDATE SKIP LOCKED` by the worker. The worker currently only checks the database and writes a heartbeat; it adds the claim when the first pipeline stage exists. This needs no new infrastructure and is enough for pipeline jobs at demo and early production scale.
 - **MinIO:** built from pinned, unmodified upstream source (`RELEASE.2025-10-15T17-29-55Z` server, `RELEASE.2025-08-13T08-35-41Z` client) in a scratch image, `docker/minio/Dockerfile`. The S3-compatible interface from ADR 0002 is unchanged.
 - **Buyer tooling stays outside the stack:** the buyer MCP server runs on the buyer's machine and talks to the API over HTTP.
 
