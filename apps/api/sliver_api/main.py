@@ -17,6 +17,7 @@ from .db import database_ready, make_engine, make_session_factory
 from .payments.adapters import Facilitator, HttpFacilitator, Ledger, XrplLedger
 from .payments.routes import router as payments_router
 from .payments.service import PurchaseService
+from .ratelimit import RateLimit, TokenBuckets
 from .security import BodyLimit, OriginCheck
 from .seller.routes import UPLOAD_BODY_LIMIT, UPLOAD_PATH
 from .seller.routes import router as seller_router
@@ -34,8 +35,9 @@ def create_app(
     store: ObjectStore | None = None,
     facilitator: Facilitator | None = None,
     ledger: Ledger | None = None,
+    rate_buckets: TokenBuckets | None = None,
 ) -> FastAPI:
-    """Build the app. `engine`, `store`, `facilitator` and `ledger` are explicit seams for tests."""
+    """Build the app. `engine`, `store`, `facilitator`, `ledger` and `rate_buckets` are seams for tests."""
     settings = settings or get_settings()
     engine = engine if engine is not None else make_engine(settings.database_url)
     store = store if store is not None else S3Store(settings)
@@ -69,9 +71,16 @@ def create_app(
     app.include_router(activity_router)
     app.include_router(auth_router)
     app.include_router(seller_router)
-    # Added last runs first: the Origin check, then body limits, then routing.
+    # Added last runs first: rate limits, the Origin check, then body limits, then routing.
     app.add_middleware(BodyLimit, default_limit=64 * 1024, limits={UPLOAD_PATH: UPLOAD_BODY_LIMIT})
     app.add_middleware(OriginCheck, allowed_origins=settings.allowed_origins)
+    if settings.sliver_rate_limit_enabled:
+        app.add_middleware(
+            RateLimit,
+            config=settings.rate_limits,
+            upload_path=UPLOAD_PATH,
+            buckets=rate_buckets if rate_buckets is not None else TokenBuckets(),
+        )
 
     @app.get("/api/health")
     def health() -> JSONResponse:

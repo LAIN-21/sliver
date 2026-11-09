@@ -11,11 +11,15 @@ It is the buyer's own tool. It runs on your machine over stdio, signs payments l
 | `sliver_search` | Search the catalog (public metadata only) | No |
 | `sliver_inspect` | Full listing: columns, coverage, provenance, price, SHA-256 | No |
 | `sliver_evaluate` | Deterministic fit report for a need: `buy`, `skip` or `look_elsewhere`, with reasons (required columns, time-range overlap, freshness, price vs budget) | No |
-| `sliver_buy` | Buy one sliver within a budget; saves the CSV, verifies its SHA-256, returns the transaction hash, explorer link and receipt | Yes (Testnet XRP) |
+| `sliver_buy` | Buy one sliver within a budget, with an optional `reason`; saves the CSV, verifies its SHA-256, returns the transaction hash, explorer link and receipt | Yes (Testnet XRP) |
 | `sliver_wallet` | Wallet address, Testnet balance, spend in the last 24 hours (never the seed) | No |
 | `sliver_purchases` | Purchases made from this machine | No |
 
 The server tells agents to evaluate before buying, to say so and look elsewhere when nothing fits, never to exceed the budget, and to ask their human when the best fit costs more.
+
+### The agent's reason
+
+`sliver_buy` takes an optional `reason`: a short, honest statement of why the human needs the data, for example "Weekly SGSIN-CNSHA spot rates since September to quote a shipment". The MCP sends it as the `X-Sliver-Agent-Note` header on both the request that gets the 402 challenge and the paid request, and Sliver shows it **publicly** on the live purchase timeline. Before sending, the MCP drops control and formatting characters, collapses whitespace, cuts it to 200 characters and encodes it as UTF-8; Sliver sanitizes it again. With no reason, no header is sent. Agents are told never to put wallet data, seeds, budgets or their human's private details in it.
 
 ## Spending policy
 
