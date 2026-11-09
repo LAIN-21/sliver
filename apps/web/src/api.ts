@@ -1,6 +1,16 @@
 // Same-origin API client. In development Vite proxies /api to the FastAPI service.
 
-import type { Account, CatalogPage, CategoryCount, PublicResource, SellerDataset, SellerDatasetDetail } from "./types";
+import type {
+  Account,
+  ActivityFeed,
+  ActivityType,
+  CatalogPage,
+  CategoryCount,
+  PublicResource,
+  PurchaseTimeline,
+  SellerDataset,
+  SellerDatasetDetail,
+} from "./types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -116,4 +126,24 @@ export function getDataset(id: string, signal?: AbortSignal): Promise<SellerData
 export function uploadDataset(form: FormData): Promise<SellerDataset> {
   // The browser sets the multipart boundary and the Origin header the API checks.
   return request<SellerDataset>("/seller/datasets", { method: "POST", body: form });
+}
+
+export function getActivity(
+  options: { limit?: number; type?: ActivityType } = {},
+  signal?: AbortSignal,
+): Promise<ActivityFeed> {
+  const params = new URLSearchParams({ limit: String(options.limit ?? 50) });
+  if (options.type) params.set("type", options.type);
+  return request<ActivityFeed>(`/activity?${params}`, { signal });
+}
+
+export function getPurchase(id: string, signal?: AbortSignal): Promise<PurchaseTimeline> {
+  return request<PurchaseTimeline>(`/purchases/${encodeURIComponent(id)}`, { signal });
+}
+
+// Server-sent events; EventSource resumes from Last-Event-ID by itself after a drop.
+export function activityStreamUrl(after: number, paymentId?: string): string {
+  const params = new URLSearchParams({ after: String(after) });
+  if (paymentId) params.set("payment_id", paymentId);
+  return `/api/activity/stream?${params}`;
 }

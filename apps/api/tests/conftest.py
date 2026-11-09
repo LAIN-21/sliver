@@ -81,8 +81,8 @@ def clean_tables(database_url):
         with engine.begin() as connection:
             connection.execute(
                 text(
-                    "TRUNCATE pipeline_steps, auth_sessions, payments, search_events, resources, datasets, "
-                    "users CASCADE"
+                    "TRUNCATE activity_events, pipeline_steps, auth_sessions, payments, search_events, "
+                    "resources, datasets, users CASCADE"
                 )
             )
     finally:

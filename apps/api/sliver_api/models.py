@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Computed,
     DateTime,
@@ -187,3 +188,34 @@ class PipelineStep(Base):
         ),
         UniqueConstraint("dataset_id", "stage", name="pipeline_steps_dataset_stage"),
     )
+
+
+class ActivityEvent(Base):
+    """One step of one purchase, for the public activity feed and purchase timelines.
+
+    An append-only log written in its own short transaction, so it never takes part in the
+    purchase's locks. That is also why `payment_id` has no foreign key: a child row would need
+    a key-share lock on an invoice the purchase holds `FOR UPDATE`. It holds public facts only,
+    never a payment header, signed blob or any other buyer secret.
+    """
+
+    __tablename__ = "activity_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(String(32))
+    payment_id: Mapped[str] = mapped_column(String(36), index=True)
+    resource_id: Mapped[str] = mapped_column(String(36))
+    amount: Mapped[str] = mapped_column(String(32))
+    asset: Mapped[str] = mapped_column(String(40))
+    price_minor: Mapped[int] = mapped_column(Integer)
+    network: Mapped[str] = mapped_column(String(16))
+    pay_to: Mapped[str] = mapped_column(String(35))
+    payer: Mapped[str | None] = mapped_column(String(35))
+    tx_hash: Mapped[str | None] = mapped_column(String(64))
+    ledger_index: Mapped[int | None] = mapped_column(Integer)
+    ledger_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A short machine-readable outcome, e.g. a rejection reason or the verified SHA-256.
+    detail: Mapped[str | None] = mapped_column(String(200))
+    # The buyer agent's own stated reason (X-Sliver-Agent-Note), sanitized and capped.
+    agent_note: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
