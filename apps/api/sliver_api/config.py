@@ -7,6 +7,8 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
+from .ratelimit import Budget, RateLimitConfig, parse_networks
+
 TESTNET_RPC_HOSTS = frozenset(
     {"s.altnet.rippletest.net", "clio.altnet.rippletest.net", "testnet.xrpl-labs.com"}
 )
@@ -48,6 +50,33 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = False
     # Container-private path that the worker healthcheck in compose.yml reads.
     worker_heartbeat_path: str = "/tmp/sliver-worker.heartbeat"  # noqa: S108
+    # Per-IP request budgets per minute (sliver_api/ratelimit.py). Over budget answers 429.
+    sliver_rate_limit_enabled: bool = True
+    sliver_rate_limit_login_per_minute: int = Field(default=20, ge=1, le=100_000)
+    sliver_rate_limit_upload_per_minute: int = Field(default=20, ge=1, le=100_000)
+    sliver_rate_limit_search_per_minute: int = Field(default=300, ge=1, le=100_000)
+    sliver_rate_limit_payment_per_minute: int = Field(default=120, ge=1, le=100_000)
+    # Proxies (IPs or CIDR ranges, comma-separated) whose X-Forwarded-For is trusted. Empty: none.
+    sliver_trusted_proxies: str = ""
+    # Raw catalog search events older than this are deleted by the worker. At least the 30-day
+    # demand window that valuation and /sell/insights read.
+    search_event_retention_days: int = Field(default=90, ge=30, le=3650)
+
+    @field_validator("sliver_trusted_proxies")
+    @classmethod
+    def valid_proxies(cls, value: str) -> str:
+        parse_networks(value)  # raises ValueError on anything that is not an IP or CIDR range
+        return value
+
+    @property
+    def rate_limits(self) -> RateLimitConfig:
+        return RateLimitConfig(
+            login=Budget("login", self.sliver_rate_limit_login_per_minute),
+            upload=Budget("upload", self.sliver_rate_limit_upload_per_minute),
+            search=Budget("search", self.sliver_rate_limit_search_per_minute),
+            payment=Budget("payment", self.sliver_rate_limit_payment_per_minute),
+            trusted_proxies=parse_networks(self.sliver_trusted_proxies),
+        )
 
     @property
     def allowed_origins(self) -> frozenset[str]:
