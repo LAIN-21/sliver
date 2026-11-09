@@ -2,6 +2,21 @@ export function formatPrice(amountMinor: number, currency = "USD"): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amountMinor / 100);
 }
 
+const BPS_DENOMINATOR = 10_000;
+
+/** A fee rate in basis points as a percentage: 1000 → "10%", 250 → "2.5%". */
+export function formatBps(bps: number): string {
+  return `${(bps / 100).toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+}
+
+/**
+ * The seller's net at a price, rounded like the server (apps/api/sliver_api/payments/fees.py):
+ * Sliver's fee is rounded down to a whole cent and the net is the rest.
+ */
+export function netAfterFee(priceMinor: number, bps: number): number {
+  return priceMinor - Math.floor((priceMinor * bps) / BPS_DENOMINATOR);
+}
+
 export function formatCategory(category: string): string {
   return category.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }

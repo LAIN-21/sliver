@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 
 import { ApiError, getValuation, publishDataset } from "../api";
-import { formatPrice } from "../format";
+import { formatBps, formatPrice, netAfterFee } from "../format";
 import type { SellerDatasetDetail, SliverValuation, ValuationFactor, ValuationReport } from "../types";
 import { ErrorMessage, INPUT, PRIMARY_BUTTON } from "./Form";
 
@@ -138,7 +138,8 @@ function Publish({
     <>
       <p className="mt-1 text-sm text-muted">
         Each sliver gets a suggested price from quality, uniqueness against the catalog, buyer demand, public availability
-        and coverage. Accept it or type your own price, then publish. Buyers pay you directly on the XRP Ledger Testnet.
+        and coverage. Accept it or type your own price, then publish. Buyers pay Sliver on the XRP Ledger Testnet; Sliver keeps
+        its {formatBps(report.platform_fee.bps)} fee and pays you the rest on the 1st and 16th of each month.
       </p>
       {full?.valuation ? (
         <p className="mt-4 text-sm">
@@ -147,6 +148,8 @@ function Publish({
           <span className="text-muted">
             (range {formatPrice(full.valuation.range.low_price_minor)} to {formatPrice(full.valuation.range.high_price_minor)})
           </span>
+          <br />
+          <NetNote priceMinor={prices[full.id] ?? full.valuation.suggested_price_minor} bps={report.platform_fee.bps} />
         </p>
       ) : null}
       <ExplanationBox report={report} />
@@ -166,6 +169,7 @@ function Publish({
               <th className="px-3 py-2 font-medium">Suggested</th>
               <th className="px-3 py-2 font-medium">Range</th>
               <th className="px-3 py-2 font-medium">Your price (USD)</th>
+              <th className="px-3 py-2 font-medium">You receive</th>
               <th className="px-3 py-2 font-medium">
                 <span className="sr-only">Breakdown</span>
               </th>
@@ -177,6 +181,8 @@ function Publish({
                 key={sliver.id}
                 sliver={sliver}
                 value={overrides[sliver.id] ?? ""}
+                price={prices[sliver.id]}
+                feeBps={report.platform_fee.bps}
                 invalid={invalid.includes(sliver.id)}
                 open={open === sliver.id}
                 onToggle={() => setOpen(open === sliver.id ? null : sliver.id)}
@@ -216,6 +222,8 @@ function Publish({
 function SliverRow({
   sliver,
   value,
+  price,
+  feeBps,
   invalid,
   open,
   onToggle,
@@ -223,6 +231,8 @@ function SliverRow({
 }: {
   sliver: SliverValuation;
   value: string;
+  price: number | undefined;
+  feeBps: number;
   invalid: boolean;
   open: boolean;
   onToggle: () => void;
@@ -250,6 +260,12 @@ function SliverRow({
             className={`${INPUT} w-28 tabular-nums ${invalid ? "border-red-400" : ""}`}
           />
         </td>
+        <td
+          className="px-3 py-2 tabular-nums whitespace-nowrap"
+          title={`After Sliver's ${formatBps(feeBps)} fee, paid out on the 1st and 16th`}
+        >
+          {invalid ? "—" : formatPrice(netAfterFee(price ?? result.suggested_price_minor, feeBps))}
+        </td>
         <td className="px-3 py-2">
           <button type="button" onClick={onToggle} aria-expanded={open} className="text-sm font-medium text-brand hover:underline">
             {open ? "Hide" : "Why?"}
@@ -258,7 +274,7 @@ function SliverRow({
       </tr>
       {open ? (
         <tr className="border-t border-line bg-surface/50">
-          <td colSpan={6} className="px-3 py-3">
+          <td colSpan={7} className="px-3 py-3">
             <Breakdown sliver={sliver} />
           </td>
         </tr>
@@ -308,6 +324,15 @@ function FactorLine({ factor }: { factor: ValuationFactor }) {
         {queries.length ? ` (${queries.map((item) => `“${item.query}” ×${item.unmet_searches}`).join(", ")})` : ""}
       </span>
     </li>
+  );
+}
+
+function NetNote({ priceMinor, bps }: { priceMinor: number; bps: number }) {
+  return (
+    <span className="text-muted">
+      You receive <span className="font-medium text-ink tabular-nums">{formatPrice(netAfterFee(priceMinor, bps))}</span> after
+      Sliver's {formatBps(bps)}, paid out on the 1st and 16th of each month.
+    </span>
   );
 }
 
@@ -387,7 +412,9 @@ function Published({ report }: { report: ValuationReport }) {
   return (
     <>
       <p className="mt-1 text-sm text-muted">
-        These slivers are live in the catalog. Agents buy them with x402 and pay you directly on the XRP Ledger Testnet.
+        These slivers are live in the catalog. Agents buy them with x402 on the XRP Ledger Testnet and pay Sliver. Sliver
+        keeps its fee (currently {formatBps(report.platform_fee.bps)}) and pays you the rest on the 1st and 16th of each
+        month; see Insights for your balance.
       </p>
       <ExplanationBox report={report} />
       {!report.payout_ready ? (
@@ -401,6 +428,7 @@ function Published({ report }: { report: ValuationReport }) {
             <tr>
               <th className="px-3 py-2 font-medium">Sliver</th>
               <th className="px-3 py-2 font-medium">Price</th>
+              <th className="px-3 py-2 font-medium">You receive</th>
               <th className="px-3 py-2 font-medium">Suggested</th>
               <th className="px-3 py-2 font-medium">Public rows</th>
               <th className="px-3 py-2 font-medium">
@@ -413,6 +441,7 @@ function Published({ report }: { report: ValuationReport }) {
               <PublishedRow
                 key={sliver.id}
                 sliver={sliver}
+                feeBps={report.platform_fee.bps}
                 open={open === sliver.id}
                 onToggle={() => setOpen(open === sliver.id ? null : sliver.id)}
               />
@@ -429,13 +458,26 @@ function Published({ report }: { report: ValuationReport }) {
   );
 }
 
-function PublishedRow({ sliver, open, onToggle }: { sliver: SliverValuation; open: boolean; onToggle: () => void }) {
+function PublishedRow({
+  sliver,
+  feeBps,
+  open,
+  onToggle,
+}: {
+  sliver: SliverValuation;
+  feeBps: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const live = sliver.status === "published";
   return (
     <>
       <tr className="border-t border-line">
         <td className="px-3 py-2 [overflow-wrap:anywhere]">{sliver.label}</td>
         <td className="px-3 py-2 font-medium tabular-nums">{sliver.price_minor ? formatPrice(sliver.price_minor) : "—"}</td>
+        <td className="px-3 py-2 tabular-nums" title={`After Sliver's current ${formatBps(feeBps)} fee, paid out on the 1st and 16th`}>
+          {sliver.price_minor ? formatPrice(netAfterFee(sliver.price_minor, feeBps)) : "—"}
+        </td>
         <td className="px-3 py-2 text-muted tabular-nums">
           {sliver.valuation ? formatPrice(sliver.valuation.suggested_price_minor) : "—"}
           {sliver.accepted_suggestion === false ? " (overridden)" : ""}
@@ -456,7 +498,7 @@ function PublishedRow({ sliver, open, onToggle }: { sliver: SliverValuation; ope
       </tr>
       {open ? (
         <tr className="border-t border-line bg-surface/50">
-          <td colSpan={5} className="px-3 py-3">
+          <td colSpan={6} className="px-3 py-3">
             <Breakdown sliver={sliver} />
           </td>
         </tr>

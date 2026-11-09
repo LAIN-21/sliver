@@ -1,8 +1,10 @@
-"""Create faucet-funded XRPL Testnet wallets for the demo sellers and buyer: `make wallets`.
+"""Create faucet-funded XRPL Testnet wallets for Sliver, the demo sellers and buyer: `make wallets`.
 
 Seeds are appended to the repository `.env` (gitignored, testnet only) and reused on later
-runs. Sellers' classic addresses are written to their accounts so they can receive x402
-payments. The buyer seed is only for local smoke tests and the buyer MCP; the API never reads it.
+runs. The platform wallet receives every x402 payment (ADR 0005): its address is written to
+`.env` as SLIVER_PLATFORM_ADDRESS for the API, and its seed is kept for future payouts; the API
+never reads it. Sellers' classic addresses are written to their accounts as payout addresses.
+The buyer seed is only for local smoke tests and the buyer MCP; the API never reads it.
 """
 
 import sys
@@ -19,6 +21,8 @@ from ..db import make_engine, make_session_factory
 from ..models import User
 
 BUYER_VAR = "SLIVER_DEMO_BUYER_SEED"
+PLATFORM_VAR = "SLIVER_PLATFORM_SEED"
+PLATFORM_ADDRESS_VAR = "SLIVER_PLATFORM_ADDRESS"
 
 
 def seller_var(key: str) -> str:
@@ -41,16 +45,25 @@ def main() -> None:
     env = read_env(env_path)
     sellers = tomllib.loads(manifest_path.read_text(encoding="utf-8"))["sellers"]
 
-    created = []
-    for name in [seller_var(seller["key"]) for seller in sellers] + [BUYER_VAR]:
+    names = [PLATFORM_VAR] + [seller_var(seller["key"]) for seller in sellers] + [BUYER_VAR]
+    created, lines = [], []
+    for name in names:
         if not env.get(name):
             wallet = generate_faucet_wallet(client)
             env[name] = wallet.seed
-            created.append(f"{name}={wallet.seed}")
-    if created:
+            created.append(name)
+            lines.append(f"{name}={wallet.seed}")
+    platform = Wallet.from_seed(env[PLATFORM_VAR]).address
+    if env.get(PLATFORM_ADDRESS_VAR) != platform:
+        if env.get(PLATFORM_ADDRESS_VAR):
+            sys.exit(
+                f"{PLATFORM_ADDRESS_VAR} in {env_path.name} does not match {PLATFORM_VAR}; fix one of them"
+            )
+        lines.append(f"{PLATFORM_ADDRESS_VAR}={platform}")
+    if lines:
         with env_path.open("a", encoding="utf-8") as handle:
             handle.write("\n# XRPL Testnet wallets created by `make wallets` (testnet only, never mainnet)\n")
-            handle.write("\n".join(created) + "\n")
+            handle.write("\n".join(lines) + "\n")
 
     engine = make_engine(settings.database_url)
     try:
@@ -66,7 +79,7 @@ def main() -> None:
     finally:
         engine.dispose()
 
-    for name in [seller_var(seller["key"]) for seller in sellers] + [BUYER_VAR]:
+    for name in names:
         address = Wallet.from_seed(env[name]).address
         balance = int(get_balance(address, client)) / 1_000_000
         print(f"{name.removesuffix('_SEED')}: {address} ({balance:,.2f} XRP)")

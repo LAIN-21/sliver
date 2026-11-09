@@ -4,7 +4,16 @@ import { Link, useParams } from "react-router";
 import { eventTone, explain, STEPS, statusFor, stepIndex, stepLabel, type Tone } from "../activity";
 import { ApiError, getPurchase } from "../api";
 import { AccountLink, LedgerLink, LiveBadge, StatusPill, TxLink } from "../components/ActivityBits";
-import { formatAmount, formatClock, formatDateTime, formatLatency, formatNetwork, formatPrice, shortHash } from "../format";
+import {
+  formatAmount,
+  formatBps,
+  formatClock,
+  formatDateTime,
+  formatLatency,
+  formatNetwork,
+  formatPrice,
+  shortHash,
+} from "../format";
 import { useActivityStream } from "../hooks/useActivityStream";
 import type { ActivityEvent, PurchaseTimeline } from "../types";
 
@@ -85,7 +94,7 @@ export default function PurchasePage() {
           <span className="font-medium tabular-nums text-ink">
             {formatPrice(purchase.amount.usd_minor)} · {formatAmount(purchase.amount.value, purchase.amount.asset)}
           </span>{" "}
-          {tx ? "paid" : "payable"} straight to the seller on {formatNetwork(purchase.network)}
+          {tx ? "paid" : "payable"} on {formatNetwork(purchase.network)}
           {delivered && signed ? (
             <>
               . Settled and delivered{" "}
@@ -135,7 +144,7 @@ export default function PurchasePage() {
         <h2 className="font-semibold">On the ledger</h2>
         <dl className="mt-3 grid gap-3 text-sm">
           <Fact label="Buyer (agent wallet)">{purchase.payer ? <AccountLink address={purchase.payer} size={8} /> : "Not known yet"}</Fact>
-          <Fact label="Seller (paid directly)">
+          <Fact label="Paid to">
             <AccountLink address={purchase.pay_to} size={8} />
           </Fact>
           <Fact label="Transaction">{tx ? <TxLink hash={tx.hash} size={10} /> : "Not submitted yet"}</Fact>
@@ -146,6 +155,12 @@ export default function PurchasePage() {
           ) : null}
           {tx?.ledger_closed_at ? <Fact label="Ledger closed">{formatDateTime(tx.ledger_closed_at)}</Fact> : null}
           <Fact label="Network">{formatNetwork(purchase.network)} (no real funds)</Fact>
+          {purchase.platform_fee ? (
+            <Fact label={`Split (Sliver's fee ${formatBps(purchase.platform_fee.bps)})`}>
+              Sliver keeps {formatPrice(purchase.platform_fee.fee.usd_minor)}; the seller is paid{" "}
+              {formatPrice(purchase.platform_fee.seller_net.usd_minor)} at the next payout (1st or 16th)
+            </Fact>
+          ) : null}
         </dl>
         {purchase.status === "delivered" ? (
           <a
@@ -158,7 +173,8 @@ export default function PurchasePage() {
           </a>
         ) : null}
         <p className="mt-4 text-xs text-muted">
-          Sliver never signs or holds funds: the agent signs its own XRPL Payment and the seller receives it. Purchase{" "}
+          Sliver never signs for the buyer: the agent signs its own XRPL Payment to Sliver's platform wallet, and Sliver pays
+          the seller their share every 15 days. Purchase{" "}
           <span className="font-mono [overflow-wrap:anywhere]">{purchase.id}</span>
         </p>
       </aside>

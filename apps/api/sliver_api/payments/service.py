@@ -1,8 +1,9 @@
-"""Purchase flow for `GET /api/resources/{id}/data` (ADR 0004).
+"""Purchase flow for `GET /api/resources/{id}/data` (ADR 0004, destination per ADR 0005).
 
 402 challenge -> PAYMENT-SIGNATURE -> facilitator verify -> stored-object integrity check ->
-facilitator settle -> independent ledger re-check -> deliver. Sliver never signs, never holds
-buyer keys and never custodies funds: the buyer's presigned Payment goes to the seller.
+facilitator settle -> independent ledger re-check -> deliver. Sliver never signs and never holds
+buyer keys. The buyer's presigned Payment goes to Sliver's platform wallet, and Sliver pays the
+seller their net on the 15-day payout schedule.
 
 Each step is also recorded as a public activity event (`activity/log.py`). Recording happens
 outside the purchase's transaction and never changes what the purchase does.
@@ -27,6 +28,7 @@ from ..config import Settings
 from ..models import Payment, Resource, User, utcnow
 from ..storage import ObjectStore
 from .adapters import Facilitator, Ledger
+from .fees import record_fee
 from .ledger_check import settlement_problem
 from .x402 import build_requirements, decode_payment_signature, drops_for, payment_required, transaction_hash
 
@@ -77,10 +79,15 @@ class PurchaseService:
             raise PurchaseError(404, "not_found", "Resource not found.")
         seller = db.get(User, resource.owner_id)
         if seller is None or not seller.xrpl_address:
+            # Sliver pays sellers their net every 15 days, so a seller needs a payout address to sell.
             raise PurchaseError(503, "seller_cannot_receive", "This seller has no XRPL address yet.")
+        # ADR 0005: buyers pay Sliver's platform wallet, never the seller directly.
+        pay_to = self.settings.sliver_platform_address
+        if not pay_to:
+            raise PurchaseError(503, "platform_cannot_receive", "Sliver has no platform XRPL address yet.")
         if not header:
-            return self.challenge(db, resource, seller.xrpl_address, url, agent_note=agent_note)
-        return self.pay(db, resource, seller.xrpl_address, header, url, agent_note)
+            return self.challenge(db, resource, pay_to, url, agent_note=agent_note)
+        return self.pay(db, resource, pay_to, header, url, agent_note)
 
     def record(self, event_type: str, payment: Payment | dict, **fields: Any) -> None:
         if self.activity is not None:
@@ -243,6 +250,7 @@ class PurchaseService:
             payment.status, payment.settled_at = "delivered", utcnow()
             payment.payer = payment.payer or tx.get("Account")
             payment.ledger_index = result.get("ledger_index")
+            self.record_platform_fee(payment)
             db.commit()
             self.record(
                 "ledger_validated",
@@ -261,6 +269,13 @@ class PurchaseService:
             "delivered", payment, ledger_index=payment.ledger_index, detail="replay" if replay else None
         )
         return Delivery(data=data, payment=payment, settlement=settlement)
+
+    def record_platform_fee(self, payment: Payment) -> None:
+        """Snapshot Sliver's fee on the sale (ADR 0005). Bookkeeping only: it never blocks delivery."""
+        try:
+            record_fee(payment, self.settings.sliver_platform_fee_bps, self.settings.sliver_platform_address)
+        except Exception:
+            logger.exception("could not record the platform fee for payment %s", payment.id)
 
     def read_verified(self, resource: Resource, payment: Payment) -> bytes:
         try:

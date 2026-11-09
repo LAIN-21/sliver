@@ -9,7 +9,7 @@ from starlette.datastructures import UploadFile
 
 from ..auth.deps import CurrentReviewer, CurrentSeller, CurrentUser
 from ..deps import DB
-from ..models import Dataset, PipelineStep, Resource, User
+from ..models import Dataset, PipelineStep, Resource, User, utcnow
 from ..pipeline.table import MAX_FILE_BYTES
 from . import pricing
 from .insights import insights
@@ -144,11 +144,13 @@ def get_valuation(
     """The suggested price, range and breakdown per sliver, the explanation and sample-row candidates."""
     dataset = seller_dataset(db, seller, dataset_id)
     try:
-        return pricing.report(db, request.app.state.store, dataset)
+        report = pricing.report(db, request.app.state.store, dataset)
     except pricing.NotPublishable:
         raise HTTPException(status_code=409, detail=NOT_READY) from None
     except pricing.DataUnavailable:
         raise HTTPException(status_code=503, detail=STORAGE_DOWN) from None
+    # The current rate, so the seller sees their net at each price. Each sale snapshots its own rate.
+    return {**report, "platform_fee": {"bps": request.app.state.settings.sliver_platform_fee_bps}}
 
 
 @router.post("/datasets/{dataset_id}/publish")
@@ -185,6 +187,7 @@ def publish_dataset(
 
 
 @router.get("/insights")
-def seller_insights(db: DB, seller: CurrentSeller) -> dict:
-    """Unmet buyer demand and the signed-in seller's earnings, with transaction links."""
-    return insights(db, seller)
+def seller_insights(request: Request, db: DB, seller: CurrentSeller) -> dict:
+    """Unmet buyer demand, the signed-in seller's earnings (gross, Sliver's fee, net) with
+    transaction links, and the balance Sliver owes them with the next payout date."""
+    return insights(db, seller, request.app.state.settings.sliver_platform_fee_bps, utcnow().date())

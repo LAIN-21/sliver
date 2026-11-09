@@ -17,7 +17,8 @@ from .wallet import WalletMissing, balance_drops, load_wallet
 INSTRUCTIONS = """\
 Sliver is a marketplace of small, verifiable data slices ("slivers") sold per purchase with x402
 on the XRP Ledger Testnet. This server is the buyer's own tool: it signs payments locally with the
-buyer's wallet, and every spending decision belongs to you and your human.
+buyer's wallet, and every spending decision belongs to you and your human. Payments go to Sliver's
+platform wallet; Sliver pays the seller.
 
 Use it honestly:
 1. Search with sliver_search, then call sliver_evaluate with the human's actual need (required
@@ -153,7 +154,7 @@ def build_server(config: Config, *, api: SliverApi | None = None, buyer: Buyer |
         output_dir: str | None = None,
         reason: str | None = None,
     ) -> dict:
-        """Buy one sliver with x402 on XRPL Testnet, paying the seller directly from the buyer wallet.
+        """Buy one sliver with x402 on XRPL Testnet, paying Sliver's platform wallet from the buyer wallet.
 
         budget_usd is required: the most your human allowed for this purchase. Refused when there
         is no budget, the price exceeds it or a local cap, the 402 challenge differs from the

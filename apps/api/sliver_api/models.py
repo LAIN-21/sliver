@@ -154,9 +154,34 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Sliver's platform fee and the seller's net (ADR 0005), snapshotted when a sale Sliver collected
+    # is delivered (`payments/fees.py`). NULL: Sliver did not collect it (paid straight to the seller
+    # before ADR 0005) or it is not delivered.
+    platform_fee_bps: Mapped[int | None] = mapped_column(Integer)
+    platform_fee_minor: Mapped[int | None] = mapped_column(Integer)
+    seller_net_minor: Mapped[int | None] = mapped_column(Integer)
+    platform_fee_drops: Mapped[int | None] = mapped_column(BigInteger)
+    seller_net_drops: Mapped[int | None] = mapped_column(BigInteger)
+    # When Sliver paid the seller's net out (15-day schedule). NULL: still owed. Nothing sets it yet.
+    seller_paid_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("status IN ('required', 'settling', 'delivered', 'failed')", name="payments_status"),
+        CheckConstraint(
+            "platform_fee_bps IS NULL"
+            " OR (platform_fee_bps BETWEEN 0 AND 5000 AND status = 'delivered'"
+            " AND platform_fee_minor >= 0 AND seller_net_minor >= 0"
+            " AND platform_fee_minor + seller_net_minor = price_minor)",
+            name="payments_platform_fee",
+        ),
+        CheckConstraint(
+            "(platform_fee_drops IS NULL) = (seller_net_drops IS NULL)"
+            " AND (platform_fee_drops IS NULL OR platform_fee_bps IS NOT NULL)",
+            name="payments_platform_fee_drops",
+        ),
+        CheckConstraint(
+            "seller_paid_out_at IS NULL OR platform_fee_bps IS NOT NULL", name="payments_seller_paid_out"
+        ),
     )
 
 

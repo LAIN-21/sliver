@@ -3,8 +3,9 @@ import base64
 import json
 
 import test_payments as harness
+from conftest import PLATFORM_ADDRESS
 from sqlalchemy import select, text
-from test_payments import BUYER, SELLER, challenge, pay
+from test_payments import BUYER, challenge, pay
 from x402_xrpl.client.presigned_payment_payer import build_payment_header_for_signed_blob
 from x402_xrpl.types import PaymentRequirements
 
@@ -44,7 +45,7 @@ def test_a_purchase_records_every_step_in_order(market, sessions, ledger):
     payment_id = response.headers["X-Sliver-Receipt"]
     steps = events(sessions, payment_id)
     assert [event.type for event in steps] == HAPPY_PATH
-    assert all(event.pay_to == SELLER.address and event.amount == "1800000" for event in steps)
+    assert all(event.pay_to == PLATFORM_ADDRESS and event.amount == "1800000" for event in steps)
     assert all(event.price_minor == 450 and event.resource_id == resource_id for event in steps)
     by_type = {event.type: event for event in steps}
     # The transaction hash appears only once it is submitted for settlement.

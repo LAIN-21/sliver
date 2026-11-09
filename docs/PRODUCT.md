@@ -21,6 +21,17 @@ Enterprise and API integrations are a later input mechanism into the same Resour
 
 Pricing considers both coverage and value. Sliver suggests an explainable price for each sliver from its quality, uniqueness against the catalog, unmet buyer demand, public availability and coverage; the seller accepts or overrides it before publishing. The formula is an architecture question, not a product invariant. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Business model
+
+Sellers list data for sale. On every sale the seller gets paid and Sliver takes a cut, the platform fee (10% by default).
+
+- The buyer pays the full listed price to Sliver's platform wallet, with one standard x402 payment.
+- Sliver keeps its fee and pays the seller the rest every 15 days (on the 1st and 16th of each month). Payouts are not automated yet.
+- Sellers see the balance Sliver owes them, the next payout date, and the gross, Sliver's fee and their net for every sale. Before publishing, they see the net they would receive at each price.
+- Testnet only. Sliver holds funds between a sale and the payout, so Mainnet use needs custody and compliance work first.
+
+See [ADR 0005](adr/0005-platform-collection-and-payouts.md).
+
 ## Conceptual flows
 
 These sequences describe product behavior. They are not service, package, or deployable boundaries.

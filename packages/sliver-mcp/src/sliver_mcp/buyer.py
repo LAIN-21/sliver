@@ -3,8 +3,8 @@
 A purchase is refused, before anything is signed, when: no budget is given; the price exceeds
 the budget, the per-purchase cap or the remaining daily cap; another purchase is in flight;
 the 402 challenge asks for a different amount than the listing's price, a different payee
-than the seller's pinned address, or anything but XRPL Testnet. Delivered bytes must match the
-listing's SHA-256 before they are saved as the purchased file.
+than the Sliver platform address pinned for this API, or anything but XRPL Testnet. Delivered
+bytes must match the listing's SHA-256 before they are saved as the purchased file.
 """
 
 import hashlib
@@ -113,8 +113,10 @@ class Buyer:
         self.config, self.api, self.store = config, api, store
         self.signer_factory, self.sleep, self.settle_attempts = signer_factory, sleep, settle_attempts
 
-    def payee_key(self, listing: dict[str, Any]) -> str:
-        return f"{self.config.api_url}|{(listing.get('seller') or {}).get('name', '')}"
+    def payee_key(self) -> str:
+        """Buyers pay Sliver's platform wallet, not the seller (ADR 0005): one payee per Sliver API,
+        trusted from the first challenge and pinned. Older per-seller pins are no longer used."""
+        return f"{self.config.api_url}|platform"
 
     def check_policy(self, price_minor: int, budget_usd: float | None) -> int:
         if budget_usd is None:
@@ -196,7 +198,7 @@ class Buyer:
             offered = next(
                 (raw.get("payTo") for raw in required.accepts if raw.get("network") == TESTNET), None
             )
-            pinned = self.store.payee(self.payee_key(listing))
+            pinned = self.store.payee(self.payee_key())
             pay_to = pinned or offered
             if not isinstance(pay_to, str) or pay_to == signer.address:
                 raise PaymentRejected("the challenge has no usable XRPL Testnet payee")
@@ -227,7 +229,7 @@ class Buyer:
         # Recorded before the payment leaves this machine, so it counts toward the daily cap.
         self.store.save_purchase(record)
         if not pinned:
-            self.store.pin_payee(self.payee_key(listing), pay_to)
+            self.store.pin_payee(self.payee_key(), pay_to)
 
         paid = {
             "spent_usd": price_minor / 100,

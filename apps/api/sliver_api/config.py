@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
+from xrpl.core.addresscodec import is_valid_classic_address
 
 from .ratelimit import Budget, RateLimitConfig, parse_networks
 
@@ -36,6 +37,11 @@ class Settings(BaseSettings):
     # Illustrative demo conversion: 400,000 drops (0.4 XRP) per USD, i.e. 1 XRP = 2.50 USD.
     drops_per_usd: int = Field(default=400_000, gt=0, le=100_000_000)
     payment_timeout_seconds: int = Field(default=600, ge=60, le=3600)
+    # Sliver's platform wallet (ADR 0005): every buyer pays here, and Sliver pays sellers their net
+    # every 15 days. Written by `make wallets`; the API never reads the platform seed. Empty: no sales.
+    sliver_platform_address: str = ""
+    # Sliver's platform fee in basis points (ADR 0005): 1000 = 10%, kept from each sale it collects.
+    sliver_platform_fee_bps: int = Field(default=1_000, ge=0, le=5_000)
     payment_source_tag: int = 804681468
     worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
     # A running pipeline step whose worker vanished is reclaimed after this long.
@@ -116,6 +122,14 @@ class Settings(BaseSettings):
     def testnet_only(cls, value: str) -> str:
         if value != "xrpl:1":
             raise ValueError("Only XRPL Testnet (xrpl:1) is supported; mainnet is refused")
+        return value
+
+    @field_validator("sliver_platform_address")
+    @classmethod
+    def classic_address(cls, value: str) -> str:
+        value = value.strip()
+        if value and not is_valid_classic_address(value):
+            raise ValueError("SLIVER_PLATFORM_ADDRESS must be a classic XRPL address (r...)")
         return value
 
     @field_validator("xrpl_rpc_url")

@@ -205,7 +205,16 @@ export type PurchaseTimeline = {
   payer: string | null;
   transaction: Transaction | null;
   agent_note: string | null;
+  platform_fee: PublicFee | null;
   events: ActivityEvent[];
+};
+
+// How a delivered sale Sliver collected splits (ADR 0005), from activity/public.py `public_fee`. The
+// buyer paid the full price to Sliver's platform wallet; Sliver pays the seller's net every 15 days.
+export type PublicFee = {
+  bps: number;
+  fee: { usd_minor: number; xrp_drops: string | null };
+  seller_net: { usd_minor: number; xrp_drops: string | null };
 };
 
 // Valuation and publication, mirroring apps/api/sliver_api/valuation.py and seller/pricing.py.
@@ -250,6 +259,8 @@ export type ValuationReport = {
   explanation: Explanation | null;
   slivers: SliverValuation[];
   sample: { max_rows: number; selected: number[]; header: string[]; candidates: SampleCandidate[] };
+  // The current platform fee rate; each sale snapshots the rate in force when it is delivered.
+  platform_fee: { bps: number };
 };
 
 export type DemandItem = {
@@ -264,16 +275,41 @@ export type Earning = {
   payment_id: string;
   resource: { id: string; title: string };
   amount: { value: string; asset: string; usd_minor: number };
+  // null: Sliver did not collect this sale (paid straight to the seller before ADR 0005).
+  platform_fee: ({ bps: number } & Money) | null;
+  net: Money;
+  payout: { status: "owed" | "paid" | "direct"; paid_out_at: string | null };
   network: string;
+  pay_to: string;
   payer: string | null;
   settled_at: string | null;
   transaction: { hash: string; ledger_index: number | null; explorer_url: string };
 };
 
+export type Money = { usd_minor: number; xrp_drops: string | null };
+
 export type SellerInsights = {
   cursor: number;
   resource_ids: string[];
   payout_address: string | null;
-  earnings: { purchases: number; usd_minor: number; xrp_drops: string; items: Earning[] };
+  platform_fee: { bps: number };
+  // What Sliver owes the seller: nets of collected sales not paid out yet (apps/api/sliver_api/seller).
+  balance: {
+    owed: Money;
+    sales_owed: number;
+    next_payout_date: string;
+    schedule: string;
+    payouts: ({ paid_out_at: string; sales: number } & Money)[];
+  };
+  earnings: {
+    purchases: number;
+    // Gross: what buyers paid for the seller's slivers.
+    usd_minor: number;
+    xrp_drops: string;
+    platform_fee: Money;
+    net: Money;
+    direct_purchases: number;
+    items: Earning[];
+  };
   demand: { days: number; items: DemandItem[] };
 };

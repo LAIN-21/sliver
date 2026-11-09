@@ -95,21 +95,21 @@ Expand the tool calls: `sliver_search`, then `sliver_evaluate`. The recommendati
 
 Expand `sliver_evaluate` and check its arguments: a short `need` such as `weekly container spot rates Singapore to Shanghai`, with `time_start: "2026-09"` and `budget_usd: 5`. That gets `buy` for the SGSIN-CNSHA sliver ($1.50). If Claude passes the whole sentence as `need`, only 5 of its 11 terms appear in the listing (the evaluator needs 60%) and it answers `look_elsewhere`; rehearse, and if needed rephrase the prompt or name the arguments. Then `sliver_buy` with `budget_usd: 5`. Pause on the result: saved file path, SHA-256 verified, transaction hash and explorer link.
 
-**Narration:** "This one fits, and it costs a dollar fifty, inside the five-dollar budget. The MCP checks that the payment request matches the listing, then signs an XRPL payment locally. It pays the seller directly; Sliver never holds the money or the buyer's keys. The bytes it receives match the listed hash. Without a budget, or over it, the MCP refuses before signing anything."
+**Narration:** "This one fits, and it costs a dollar fifty, inside the five-dollar budget. The MCP checks that the payment request matches the listing, then signs an XRPL payment locally. It pays Sliver's platform wallet, which keeps a ten percent fee and pays the seller every fifteen days; Sliver never sees the buyer's keys. The bytes it receives match the listed hash. Without a budget, or over it, the MCP refuses before signing anything."
 
 ### 7. Live timeline and earnings (2:25–2:45)
 
 **On screen:** switch to `/activity`. The purchase card is at the top. Open it to `/purchases/{id}` and scroll the steps as the page labels them: "402 Payment Required", "Signed payment received", "Verified by the facilitator", "Data integrity checked", "Submitted to the XRP Ledger", "Settled", "Validated on the ledger", "Data delivered", each with its time.
 
-Then switch to the `/sell/insights` tab: the $1.50 purchase is already under Earnings, with its transaction link, without a reload.
+Then switch to the `/sell/insights` tab: without a reload, the Balance shows $1.35 owed to the seller with the next payout date, and the $1.50 purchase is under Earnings with Sliver's $0.15 fee and its transaction link.
 
-**Narration:** "Every step of the x402 flow appears live: the 402 challenge, the signed payment, facilitator verification, Sliver's own integrity check, settlement, and Sliver's independent check of the ledger before it delivers. And the seller sees the earning as soon as it lands."
+**Narration:** "Every step of the x402 flow appears live: the 402 challenge, the signed payment, facilitator verification, Sliver's own integrity check, settlement, and Sliver's independent check of the ledger before it delivers. And the seller sees what Sliver owes them, and when it pays out, as soon as the sale lands."
 
 ### 8. On chain (2:45–3:00)
 
-**On screen:** click the transaction link on the timeline. On testnet.xrpl.org, show the Payment from the buyer to the seller, the delivered amount, the `InvoiceID` field and the validated result.
+**On screen:** click the transaction link on the timeline. On testnet.xrpl.org, show the Payment from the buyer to Sliver's platform wallet, the delivered amount, the `InvoiceID` field and the validated result.
 
-**Narration:** "And here it is on the XRP Ledger: a Payment from the agent's wallet straight to the seller, bound to the invoice. Sliver: data sold in slices to agents, settled with x402 on XRPL."
+**Narration:** "And here it is on the XRP Ledger: a Payment from the agent's wallet to Sliver, bound to the invoice; Sliver pays the seller on the next payout. Sliver: data sold in slices to agents, settled with x402 on XRPL."
 
 ## Criteria coverage
 
