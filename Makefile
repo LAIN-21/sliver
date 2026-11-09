@@ -61,7 +61,10 @@ smoke-testnet:
 # The whole story on XRPL Testnet: seller upload, pipeline, valuation and publish, then the Sliver
 # MCP's buyer code for a question Sliver can't answer and one it buys. Writes the validated
 # transactions into README.md between the demo-tx markers. Never resets or deletes data.
-demo: seed wallets
+# `wallets` sets payout addresses on the seeded sellers, so it runs after `seed`, also under -j.
+demo:
+	$(MAKE) seed
+	$(MAKE) wallets
 	$(COMPOSE) run --rm \
 		-v $(CURDIR)/.env:/repo/.env:ro \
 		-v $(CURDIR)/README.md:/repo/README.md \
