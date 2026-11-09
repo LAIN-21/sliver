@@ -2,20 +2,25 @@
 
 Jobs are `pipeline_steps` rows in PostgreSQL claimed with `FOR UPDATE SKIP LOCKED` (ADR 0003),
 so no queue service is needed. Each loop writes a heartbeat file that the container healthcheck
-reads, then runs every claimable step.
+reads, then runs every claimable step. About once an hour it also deletes raw catalog search events
+older than SEARCH_EVENT_RETENTION_DAYS.
 """
 
 import logging
 import signal
 import threading
+import time
 from pathlib import Path
 
+from .catalog.search import prune_search_events
 from .config import Settings, get_settings
 from .db import database_ready, make_engine, make_session_factory
 from .pipeline.jobs import process_available
 from .storage import ObjectStore, S3Store
 
 logger = logging.getLogger("sliver_api.worker")
+
+PRUNE_INTERVAL_SECONDS = 3600.0
 
 
 def run_once(settings: Settings, engine) -> bool:
@@ -41,12 +46,30 @@ def work(settings: Settings, engine, store: ObjectStore) -> int:
         return 0
 
 
+def prune(settings: Settings, engine) -> int:
+    """Apply the search-event retention bound. Never raises into the worker loop."""
+    try:
+        with make_session_factory(engine)() as db:
+            deleted = prune_search_events(db, settings.search_event_retention_days)
+    except Exception:
+        logger.exception("search event retention failed")
+        return 0
+    if deleted:
+        days = settings.search_event_retention_days
+        logger.info("deleted %d search events older than %d days", deleted, days)
+    return deleted
+
+
 def run(settings: Settings, stop: threading.Event) -> None:
     engine = make_engine(settings.database_url)
     store = S3Store(settings)
     logger.info("worker started")
+    next_prune = 0.0
     try:
         while not stop.is_set():
+            if time.monotonic() >= next_prune:
+                prune(settings, engine)
+                next_prune = time.monotonic() + PRUNE_INTERVAL_SECONDS
             if not work(settings, engine, store):
                 stop.wait(settings.worker_poll_seconds)
     finally:

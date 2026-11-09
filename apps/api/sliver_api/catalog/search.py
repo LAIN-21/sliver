@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-from sqlalchemy import Select, Text, case, func, select
+from sqlalchemy import Select, Text, case, delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Dataset, Resource, SearchEvent, User, utcnow
@@ -148,3 +148,11 @@ def unmet_demand(db: Session, days: int, limit: int) -> list[dict]:
         }
         for query, searches, unmet_count, last_seen in rows
     ]
+
+
+def prune_search_events(db: Session, retention_days: int) -> int:
+    """Delete raw search events older than the retention window. Returns how many were deleted."""
+    cutoff = utcnow() - timedelta(days=retention_days)
+    deleted = db.execute(delete(SearchEvent).where(SearchEvent.created_at < cutoff)).rowcount
+    db.commit()
+    return deleted or 0
