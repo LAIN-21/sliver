@@ -1,5 +1,7 @@
-# CodeRabbit reviews each pull request once, when it is opened.
-# It does not re-review on later pushes; comment `@coderabbitai review` to ask for another run.
+# CodeRabbit reviews each ready (non-draft) pull request that targets `main` once, when it is
+# opened, and does not re-review on later pushes. Draft PRs and PRs targeting other branches
+# (for example stacked PRs) are not reviewed automatically. Comment `@coderabbitai review` to
+# request a review or another run.
 reviews:
   auto_review:
     enabled: true
