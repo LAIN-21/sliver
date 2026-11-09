@@ -72,7 +72,7 @@ The first run creates `.env` from `.env.example` and builds the images (several 
 To sign in as a seller and buy on Testnet:
 
 1. In `.env`, choose local values for `SLIVER_SELLER_PASSWORD` and `SLIVER_REVIEWER_PASSWORD`. Optionally set `ANTHROPIC_API_KEY`; without it the pipeline uses a deterministic offline fallback. Then run `make dev-start` again so the containers pick them up.
-2. Load the demo catalog (4 synthetic logistics datasets from 2 demo sellers, 21 slivers):
+2. Load the demo catalog (6 synthetic logistics datasets from 2 demo sellers, 34 slivers):
 
    ```bash
    make seed

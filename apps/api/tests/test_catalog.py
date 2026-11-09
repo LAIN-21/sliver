@@ -196,14 +196,38 @@ def test_categories_count_published_resources(seeded, client):
     ]
 
 
-def test_example_catalog_seeds_cleanly(sessions, store):
+def example_catalog() -> Path:
     explicit = os.environ.get("SLIVER_EXAMPLES_DIR")
     # In a repository checkout (CI), examples/ sits three levels above this file.
     folder = Path(explicit) if explicit else Path(__file__).resolve().parents[3] / "examples" / "datasets"
     if not (folder / "manifest.toml").exists():
         pytest.skip("example datasets are not available in this environment")
-    result = seed(sessions, store, folder)
+    return folder
+
+
+def test_example_catalog_seeds_cleanly(sessions, store):
+    result = seed(sessions, store, example_catalog())
     assert result["published_resources"] == result["created_resources"] > 4
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("cost of starting a port logistics company in Singapore", "Singapore port-business operating costs"),
+        ("warehouse rent Tuas", "Singapore port-business operating costs: warehouse rent"),
+        (
+            "terminal handling charge Singapore 40ft",
+            "Singapore port-business operating costs: terminal handling charges",
+        ),
+        ("container throughput Pasir Panjang 2026", "Singapore port container throughput: Pasir Panjang"),
+    ],
+)
+def test_example_catalog_answers_the_port_business_questions(sessions, store, client, question, expected):
+    seed(sessions, store, example_catalog())
+    top = search(client, q=question)["items"][0]
+    assert top["title"].startswith(expected)
+    assert "synthetic" in top["description"].lower()
+    assert "synthetic" in top["provenance"]["source"].lower()
 
 
 def test_filter_only_misses_and_later_pages_are_not_unmet_demand(seeded, make_client, sessions):

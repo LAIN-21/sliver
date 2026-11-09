@@ -1,7 +1,7 @@
 """Regenerate the synthetic demo datasets: `python3 examples/datasets/generate.py`.
 
-Every value is simulated with a fixed seed. Terminal and route names are real places, but
-none of the numbers describe real operations.
+Every value is simulated with a fixed seed. Terminal, zone and route names are real places, but
+none of the numbers describe real operations, volumes, tariffs, rents or wages.
 """
 
 import csv
@@ -110,9 +110,124 @@ def customs_clearance_times(rng: random.Random) -> None:
     )
 
 
+def months(start: tuple[int, int], count: int) -> list[tuple[int, int]]:
+    year, month = start
+    result = []
+    for _ in range(count):
+        result.append((year, month))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return result
+
+
+# November 2024 to October 2026: the 24 months before the demo catalog was collected.
+LAST_24_MONTHS = months((2024, 11), 24)
+
+
+def port_container_throughput(rng: random.Random) -> None:
+    # terminal: (base TEU per month, monthly growth, transshipment share, TEU exchanged per call,
+    #            average vessel size in TEU). Simulated magnitudes, not official statistics.
+    terminals = {
+        "Pasir Panjang": (1_480_000, 0.000, 0.89, 2_450, 9_600),
+        "Tuas": (980_000, 0.018, 0.91, 3_300, 13_200),
+        "Keppel": (430_000, -0.012, 0.86, 1_750, 6_100),
+        "Brani": (340_000, -0.015, 0.87, 1_500, 5_300),
+        "Jurong Port": (52_000, 0.004, 0.25, 420, 1_900),
+    }
+    # Lunar New Year dip in February, peak season from August to October.
+    season = {2: 0.93, 8: 1.03, 9: 1.04, 10: 1.03}
+    rows = []
+    for index, (year, month) in enumerate(LAST_24_MONTHS):
+        for terminal, (base, growth, transshipment_share, per_call, vessel_size) in terminals.items():
+            total = base * (1 + growth) ** index * season.get(month, 1.0) * rng.uniform(0.96, 1.04)
+            transshipment = round(total * min(0.97, max(0.0, rng.gauss(transshipment_share, 0.01))))
+            gateway = round(total) - transshipment
+            imports = round(gateway * rng.uniform(0.49, 0.55))
+            exports = gateway - imports
+            calls = max(1, round(total / (per_call * rng.uniform(0.94, 1.06))))
+            size = round(vessel_size * (1 + 0.002 * index) * rng.uniform(0.97, 1.03))
+            rows.append(
+                [f"{year}-{month:02d}", terminal, imports, exports, transshipment, round(total), calls, size]
+            )
+    write(
+        "sg-port-container-throughput.csv",
+        [
+            "month",
+            "terminal",
+            "import_teu",
+            "export_teu",
+            "transshipment_teu",
+            "total_teu",
+            "vessel_calls",
+            "avg_vessel_size_teu",
+        ],
+        rows,
+    )
+
+
+def port_business_operating_costs(rng: random.Random) -> None:
+    # (cost_category, item, zone_or_type, unit, SGD amount in November 2024, yearly drift).
+    # Simulated benchmarks, not real tariffs or quotes.
+    items = [
+        ("terminal handling charges", "dry container, laden", "20ft", "SGD per container", 205.0, 0.03),
+        ("terminal handling charges", "dry container, laden", "40ft", "SGD per container", 300.0, 0.03),
+        ("terminal handling charges", "reefer container, laden", "20ft", "SGD per container", 265.0, 0.03),
+        ("terminal handling charges", "reefer container, laden", "40ft", "SGD per container", 390.0, 0.03),
+        ("port dues", "ocean-going container vessel", "per call", "SGD per gross ton", 0.098, 0.02),
+        ("port dues", "regional feeder vessel", "per call", "SGD per gross ton", 0.122, 0.02),
+        ("warehouse rent", "ambient warehouse space", "Jurong", "SGD per sqm per month", 17.8, 0.035),
+        ("warehouse rent", "ambient warehouse space", "Tuas", "SGD per sqm per month", 15.2, 0.045),
+        ("warehouse rent", "ambient warehouse space", "Pasir Panjang", "SGD per sqm per month", 21.5, 0.03),
+        ("warehouse rent", "ambient warehouse space", "Changi", "SGD per sqm per month", 19.9, 0.03),
+        ("warehouse rent", "cold-store warehouse space", "Jurong", "SGD per sqm per month", 33.0, 0.035),
+        ("warehouse rent", "cold-store warehouse space", "Tuas", "SGD per sqm per month", 29.5, 0.045),
+        ("warehouse rent", "cold-store warehouse space", "Pasir Panjang", "SGD per sqm per month", 38.0, 0.03),
+        ("warehouse rent", "cold-store warehouse space", "Changi", "SGD per sqm per month", 35.5, 0.03),
+        ("trucking", "container haulage, port to warehouse", "20ft", "SGD per trip", 215.0, 0.04),
+        ("trucking", "container haulage, port to warehouse", "40ft", "SGD per trip", 275.0, 0.04),
+        ("trucking", "lorry delivery, 10ft truck", "island-wide", "SGD per trip", 118.0, 0.04),
+        ("labour", "forklift operator", "full-time", "SGD per month", 2_750.0, 0.045),
+        ("labour", "warehouse assistant", "full-time", "SGD per month", 2_250.0, 0.045),
+        ("labour", "prime mover driver", "full-time", "SGD per month", 3_350.0, 0.045),
+        ("customs brokerage", "import permit declaration", "per declaration", "SGD per declaration", 45.0, 0.02),
+        ("customs brokerage", "export permit declaration", "per declaration", "SGD per declaration", 35.0, 0.02),
+        ("customs brokerage", "transshipment permit declaration", "per declaration", "SGD per declaration", 30.0, 0.02),
+    ]
+    rows = []
+    for index, (year, month) in enumerate(LAST_24_MONTHS):
+        usd_per_sgd = 0.745 + 0.012 * index / 23 + rng.uniform(-0.006, 0.006)
+        for category, item, zone_or_type, unit, base, drift in items:
+            # Tariffs, wages and fees step up each January; rents and trucking drift monthly.
+            if category in ("terminal handling charges", "port dues", "labour", "customs brokerage"):
+                level = (1 + drift) ** (year - 2024)
+                noise = 1.0
+            else:
+                level = (1 + drift) ** (index / 12)
+                noise = rng.uniform(0.985, 1.015)
+            sgd = base * level * noise
+            digits = 4 if sgd < 1 else 2
+            rows.append(
+                [
+                    f"{year}-{month:02d}",
+                    category,
+                    item,
+                    zone_or_type,
+                    unit,
+                    f"{sgd:.{digits}f}",
+                    f"{sgd * usd_per_sgd:.{digits}f}",
+                ]
+            )
+    write(
+        "sg-port-business-operating-costs.csv",
+        ["month", "cost_category", "item", "zone_or_type", "unit", "sgd_amount", "usd_amount"],
+        rows,
+    )
+
+
 if __name__ == "__main__":
     rng = random.Random(20261109)
     berth_waiting_times(rng)
     route_eta_delays(rng)
     container_spot_rates(rng)
     customs_clearance_times(rng)
+    port_container_throughput(rng)
+    port_business_operating_costs(rng)
