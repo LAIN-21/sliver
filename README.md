@@ -1,6 +1,6 @@
 # Sliver
 
-**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, and cuts it into small priced slices ("slivers"). Buying agents find a sliver, check that it fits, and pay the seller directly on XRPL Testnet with one retried HTTP request. Sliver never holds funds or keys and never spends on a buyer's behalf.
+**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, and pay the seller directly on XRPL Testnet with one retried HTTP request. Sliver never holds funds or keys and never spends on a buyer's behalf.
 
 Ripple track. Built after the team's SingHacks finalist [Ledger402](https://github.com/LAIN-21/ripple-challenge), see [Since SingHacks](#since-singhacks).
 
@@ -16,7 +16,7 @@ Ripple track. Built after the team's SingHacks finalist [Ledger402](https://gith
 
 **Buying agents** need small, specific facts, such as "container spot rates Singapore → Shanghai since September". Today they get a whole dataset behind a subscription, an API key and a human sign-up. An agent can't sign a contract, and it shouldn't pay for a whole dataset when it needs one lane's 34 rows.
 
-**Data owners** have useful tables but no cheap way to sell them to machines. Pricing, packaging, privacy checks and payment collection each take work, and publishing raw data risks leaking what they meant to sell.
+**Data owners** have useful tables but no cheap way to sell them to machines. Pricing, packaging, privacy checks and payment collection each take work, publishing raw data risks leaking what they meant to sell, and they can't see what buyers are looking for.
 
 **Sliver** turns an uploaded table into machine-purchasable slivers. Each one is a whole dataset or one slice of it (one lane, one route, one month), stored as its own immutable file with its own SHA-256. Agents discover slivers through metadata only and pay per sliver with x402. The bytes they receive are exactly the ones whose hash was listed.
 
@@ -29,7 +29,7 @@ flowchart LR
 
   subgraph SL["Sliver (Docker Compose)"]
     direction TB
-    API["API (FastAPI)<br/>catalog · x402 gate · activity"]
+    API["API (FastAPI)<br/>catalog · pricing · x402 gate · activity"]
     W["Pipeline worker<br/>8 stages incl. Claude review"]
     DB[("PostgreSQL<br/>catalog, jobs, payments")]
     OBJ[("MinIO<br/>immutable CSVs + SHA-256")]
@@ -51,7 +51,7 @@ flowchart LR
   API -. "independent re-check" .-> XRPL
 ```
 
-Pipeline stages: validate → profile → privacy → duplicates → Claude review → research (opt-in) → package → decide. The web app (marketplace, seller pages, live `/activity` timeline) talks to the same API.
+Pipeline stages: validate → profile → privacy → duplicates → Claude review → research (opt-in) → package → decide. An accepted dataset then waits for its seller, who reviews the suggested prices, accepts or overrides them, and publishes. The web app (marketplace, seller pages and insights, live `/activity` timeline) talks to the same API.
 
 The four responsibilities (seller, catalog, buyer interface, transactions) and every decision behind them are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Product invariants are in [docs/PRODUCT.md](docs/PRODUCT.md). The stack (Python 3.13, FastAPI 0.115, SQLAlchemy 2, PostgreSQL, MinIO, React + Vite) is in [ADR 0003](docs/adr/0003-application-stack-and-local-containers.md).
 
@@ -92,7 +92,7 @@ To sign in as a seller and buy on Testnet:
 
    This buys the cheapest sliver, checks the bytes against the catalog SHA-256, replays the payment to show it isn't charged twice, asks the x402.org facilitator to verify the requirements, and prints the transaction with its explorer link.
 
-Sign in at http://127.0.0.1:5173/sell/login as `harbour-analytics@sliver.local`, `strait-line-data@sliver.local` or `reviewer@sliver.local`. `make dev-stop` stops the stack and keeps its data. Every target is described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#make-targets).
+Sign in at http://127.0.0.1:5173/sell/login as `harbour-analytics@sliver.local`, `strait-line-data@sliver.local` or `reviewer@sliver.local`. As a seller, upload a CSV at `/sell/upload`; once it is accepted, its page shows "Price and publish". Your earnings and unmet buyer demand are at `/sell/insights`. `make dev-stop` stops the stack and keeps its data. Every target is described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#make-targets).
 
 ## Buy with your agent (Sliver MCP)
 
@@ -176,9 +176,18 @@ t54 contributed XRPL x402 support to the XRPL AI Starter Kit: the `x402-xrpl` Py
 
 The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a small client of our own, because the SDK's `uvicorn<0.31` pin conflicts with the `mcp` SDK. Its payments settle through the same t54 facilitator, and the official x402.org facilitator verifies them. What that taught us is in [docs/BUILDER_FEEDBACK.md](docs/BUILDER_FEEDBACK.md).
 
+## Pricing, publishing and seller insights
+
+- **Deterministic, explainable price.** For each sliver, [`valuation.py`](apps/api/sliver_api/valuation.py) computes *suggested = base × quality × uniqueness × demand × public availability × coverage*. The base is the median price of at least two published comparables in the same category, otherwise a fixed category base. Quality comes from the acceptance score. Overlap with catalog data that the duplicates stage measured lowers uniqueness. Matching unmet searches from the last 30 days raise demand (up to +50%). A free equivalent found by research lowers public availability. Row count sets coverage. Every factor comes back with its inputs and reason, the breakdown multiplies out exactly to the price, and a range is shown around it. The same inputs always give the same price.
+- **Claude explains, never prices.** Claude gets only the computed numbers and the factor reasons (no rows, provenance or search texts) and writes the explanation ([`seller/pricing.py`](apps/api/sliver_api/seller/pricing.py), versioned prompt `valuation_explanation.v1`). If its text contains a number that isn't in its input, the call fails, or there is no API key, a template is used instead. Publishing never calls Claude.
+- **The seller decides.** On the dataset page, "Price and publish" shows each sliver's suggestion, range and a "Why?" breakdown. The seller accepts or overrides each price and publishes all slivers together (`GET /api/seller/datasets/{id}/valuation`, `POST /api/seller/datasets/{id}/publish`). Each published sliver keeps a private snapshot of its valuation.
+- **Opt-in sample rows.** Nothing from the table is public by default. The seller may make up to five rows public, and a row with any privacy-flagged value is refused. A sliver shows only the selected rows that belong to it.
+- **Insights.** `/sell/insights` (`GET /api/seller/insights`) shows the seller's earnings, with each delivered purchase linked to its Testnet transaction, updating live from the activity stream. It also lists unmet buyer demand (searches that found nothing in the last 30 days) next to the seller's matching slivers.
+
 ## AI in the loop
 
 - **Seller side: Claude reviews every upload.** The `ai_review` stage asks Claude (structured output through a strict tool call, versioned prompts in [`apps/api/sliver_api/prompts/`](apps/api/sliver_api/prompts)) for the category, tags, public title and description, quality and sensitivity concerns, and how to slice the table. Optional research (`SLIVER_AI_RESEARCH=true`) uses Claude's web search to check whether the same data is already freely available. Model output is validated and only shapes metadata and slicing. It can send a dataset to a human reviewer but never accept one.
+- **Pricing: Claude explains the numbers.** The price itself is a deterministic formula; Claude only writes the seller-facing explanation, guarded against invented numbers ([above](#pricing-publishing-and-seller-insights)).
 - **Buyer side: the buyer's own agent decides.** The Sliver MCP gives any agent a deterministic `sliver_evaluate` fit report and tells it to say "look elsewhere" rather than buy a near miss. Sliver hosts no buying agent.
 
 ## Security and safeguards
@@ -186,7 +195,7 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 - **No custody.** Buyers pay sellers' XRPL addresses directly. Sliver never signs a transaction, never holds funds, and never stores or reads buyer keys ([transactions.md](docs/agents/transactions.md)).
 - **No autonomous spending by Sliver.** A product invariant ([PRODUCT.md](docs/PRODUCT.md)): spending decisions belong to the buyer's agent and its human.
 - **Buyer budget caps in the MCP.** `sliver_buy` refuses before signing when there is no `budget_usd`, the price exceeds it, it would break the per-purchase cap (default $5) or the rolling 24-hour cap (default $20), another purchase is in flight, or the 402 challenge differs from the listing (amount, network, pinned payee). The spend ledger is written before a payment leaves the machine.
-- **Metadata-only discovery.** Every public response goes through one allow-list serializer ([`catalog/public.py`](apps/api/sliver_api/catalog/public.py)), covered by a leak test. Only `published` slivers are visible. Object keys, rows, owner emails and rights statements never leave the API.
+- **Metadata-only discovery.** Every public response goes through one allow-list serializer ([`catalog/public.py`](apps/api/sliver_api/catalog/public.py)), covered by a leak test. Only `published` slivers are visible. Object keys, owner emails and rights statements never leave the API, and neither do rows, except up to five sample rows the seller explicitly made public.
 - **Privacy stage.** Uploads are scanned for emails, phone numbers, Luhn-valid card numbers, IBANs and NRIC/FIN. Findings name columns and row numbers, never values. Claude sees at most 20 sample rows, with flagged cells replaced by `[redacted]`. A leak guard rejects public text that contains raw cell values (other than dates and non-personal category values).
 - **Integrity.** Uploads and slivers are immutable objects with a SHA-256. The worker re-checks the hash before every stage, the API before every settlement, and the MCP after every delivery.
 - **Testnet only.** Network `xrpl:1` and an HTTPS allow-list of Testnet RPC endpoints are enforced in configuration, and mainnet is refused.
@@ -196,7 +205,7 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 
 | Suite | Covers | Run |
 |---|---|---|
-| API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, auth, activity feed | `make test` |
+| API (`apps/api/tests`) | Payments with a stub facilitator and stub ledger (402 shape, replay, rival transactions, the ledger re-check matrix, tampered requirements, mainnet refusal), catalog leak test, pipeline stages, AI review with a stubbed SDK, valuation (determinism, each factor's direction, publish, sample-row refusals, the explanation's number guard, insights), auth, activity feed | `make test` |
 | Buyer packages (`packages/`) | Every `sliver_buy` refusal (asserting nothing was signed), signed-transaction fields, fit evaluation, MCP protocol end to end | `cd packages && uv sync --all-packages && uv run pytest` |
 | Lint | Ruff for Python, TypeScript typecheck for the web app | `make lint` |
 
@@ -207,13 +216,13 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 | Criterion | Where to look |
 |---|---|
 | Reachability | One-line MCP install for Claude Code, Claude Desktop and Cursor ([MCP README](packages/sliver-mcp/README.md)); any x402 v2 client works, and paid endpoints are listed at `GET /.well-known/x402`; the whole stack runs with `make dev-start` |
-| Creativity: AI-native | Claude writes listings and slicing from redacted samples ([`pipeline/ai_review.py`](apps/api/sliver_api/pipeline/ai_review.py)); agents evaluate fit before buying ([`sliver_mcp/evaluate.py`](packages/sliver-mcp/src/sliver_mcp/evaluate.py)) |
+| Creativity: AI-native | Claude writes listings and slicing from redacted samples ([`pipeline/ai_review.py`](apps/api/sliver_api/pipeline/ai_review.py)); Claude explains each deterministic price, guarded against invented numbers ([`seller/pricing.py`](apps/api/sliver_api/seller/pricing.py)); unmet agent searches raise prices and show sellers what to supply ([pricing and insights](#pricing-publishing-and-seller-insights)); agents evaluate fit before buying ([`sliver_mcp/evaluate.py`](packages/sliver-mcp/src/sliver_mcp/evaluate.py)) |
 | Creativity: XRPL AI Starter Kit + x402 | [Starter Kit integration](#xrpl-ai-starter-kit-integration); [ADR 0004](docs/adr/0004-x402-payments-on-xrpl.md) |
-| Feasibility | Direct-to-seller payments with no custody; deterministic fallback without an API key; plain PostgreSQL job queue with no extra infrastructure ([ARCHITECTURE.md](docs/ARCHITECTURE.md)); [limitations](#limitations) stated openly |
+| Feasibility | Direct-to-seller payments with no custody; the full seller loop from upload to explainable price, publication and live earnings; deterministic fallbacks without an API key; plain PostgreSQL job queue with no extra infrastructure ([ARCHITECTURE.md](docs/ARCHITECTURE.md)); [limitations](#limitations) stated openly |
 | Technical depth: XRPL and x402 | Ledger re-check ([`ledger_check.py`](apps/api/sliver_api/payments/ledger_check.py)), purchase flow ([`payments/service.py`](apps/api/sliver_api/payments/service.py)), our own x402 client ([`sliver-x402`](packages/sliver-x402/README.md)) |
 | Technical depth: agents | [`packages/sliver-mcp`](packages/sliver-mcp/README.md): six tools, server instructions for honest buying, the spending policy in [`buyer.py`](packages/sliver-mcp/src/sliver_mcp/buyer.py) |
-| Technical depth: security, tests, safeguards | [Security and safeguards](#security-and-safeguards), [Tests and CI](#tests-and-ci), [transactions.md](docs/agents/transactions.md), [seller.md](docs/agents/seller.md), [catalog.md](docs/agents/catalog.md) |
-| UX: agent actions, payments, on-chain | Live `/activity` feed and `/purchases/{id}` timeline (402 → signature → verified → integrity → settlement → ledger validated → delivered, with explorer links); seller dataset page with each pipeline stage and Claude's listing; [demo script](docs/DEMO.md) |
+| Technical depth: security, tests, safeguards | [Security and safeguards](#security-and-safeguards), deterministic pricing with a full breakdown ([`valuation.py`](apps/api/sliver_api/valuation.py)), [Tests and CI](#tests-and-ci), [transactions.md](docs/agents/transactions.md), [seller.md](docs/agents/seller.md), [catalog.md](docs/agents/catalog.md) |
+| UX: agent actions, payments, on-chain | Live `/activity` feed and `/purchases/{id}` timeline (402 → signature → verified → integrity → settlement → ledger validated → delivered, with explorer links); seller dataset page with each pipeline stage, Claude's listing and the "Price and publish" breakdown; `/sell/insights` with live earnings and tx links; [demo script](docs/DEMO.md) |
 | Builder feedback | [docs/BUILDER_FEEDBACK.md](docs/BUILDER_FEEDBACK.md) |
 | Transaction hashes | [Testnet transactions](#testnet-transactions-from-make-demo) (filled in by `make demo`) |
 
@@ -223,7 +232,7 @@ At SingHacks 2026 the team built [Ledger402](https://github.com/LAIN-21/ripple-c
 
 Sliver is **the marketplace on the other side**: the place a buying agent like Ledger402 buys from. Since SingHacks:
 
-- A real seller side: uploads, an inspection pipeline, Claude review, slicing into slivers, and a human reviewer queue.
+- A real seller side: uploads, an inspection pipeline, Claude review, slicing into slivers, a human reviewer queue, explainable pricing, publication and a live earnings and demand page.
 - Payments moved to the official x402 v2 XRPL `exact` scheme: `InvoiceID` binding without memos (Ledger402 bound invoices with memos), payment straight to the seller, and an independent ledger re-check.
 - The buying agent became an open-source MCP that any agent can use, with the human's budget enforced locally. Ledger402 is now a reference buyer, not part of Sliver's architecture ([ARCHITECTURE.md](docs/ARCHITECTURE.md)).
 - A live, public timeline of every payment step, with on-chain links.
@@ -231,7 +240,7 @@ Sliver is **the marketplace on the other side**: the place a buying agent like L
 ## Limitations
 
 - **Testnet only.** Testnet XRP has no value. The USD-to-XRP rate is a fixed, disclosed demo rate, not a market price. There is no RLUSD pricing, marketplace fee, payout or refund flow. A settlement that fails the ledger re-check is marked failed and refunded by hand.
-- **Valuation and publication are pending #15.** Explainable suggested prices, the seller's publish step and the insights page with unmet demand and earnings are in progress. Until then, uploads that pass the pipeline become `draft` slivers with a 1-cent placeholder price and are not buyable. The 21 seeded slivers are the buyable catalog.
+- **Pricing is a demo calibration.** The category bases and factor weights in the valuation formula are not market research. Demand matching is term-based. Prices can't be changed after publishing.
 - **No hosted deployment.** Everything runs locally in Docker with development images.
 - **The facilitator is best effort with no SLA.** The real Testnet purchase is not part of CI. The x402.org facilitator is the one-setting fallback.
 - **Payee pinning.** The public catalog does not publish sellers' payment addresses yet, so the MCP trusts the payee on the first purchase from a seller and pins it after that.
