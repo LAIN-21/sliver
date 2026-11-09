@@ -23,7 +23,7 @@ Ripple track. Built after the team's SingHacks finalist [Ledger402](https://gith
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph Seller["Seller (browser)"]
     S["/sell: upload CSV + provenance"]
   end
