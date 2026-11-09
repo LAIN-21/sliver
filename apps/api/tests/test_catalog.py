@@ -197,6 +197,7 @@ def test_categories_count_published_resources(seeded, client):
 
 
 def example_catalog() -> Path:
+    """The repository's demo catalog folder; skips the test when it is not available."""
     explicit = os.environ.get("SLIVER_EXAMPLES_DIR")
     # In a repository checkout (CI), examples/ sits three levels above this file.
     folder = Path(explicit) if explicit else Path(__file__).resolve().parents[3] / "examples" / "datasets"
@@ -223,6 +224,7 @@ def test_example_catalog_seeds_cleanly(sessions, store):
     ],
 )
 def test_example_catalog_answers_the_port_business_questions(sessions, store, client, question, expected):
+    """The demo question's sub-questions find the matching synthetic sliver first."""
     seed(sessions, store, example_catalog())
     top = search(client, q=question)["items"][0]
     assert top["title"].startswith(expected)

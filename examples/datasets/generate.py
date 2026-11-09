@@ -111,6 +111,7 @@ def customs_clearance_times(rng: random.Random) -> None:
 
 
 def months(start: tuple[int, int], count: int) -> list[tuple[int, int]]:
+    """`count` consecutive (year, month) pairs starting at `start`."""
     year, month = start
     result = []
     for _ in range(count):
@@ -124,6 +125,7 @@ LAST_24_MONTHS = months((2024, 11), 24)
 
 
 def port_container_throughput(rng: random.Random) -> None:
+    """Monthly import, export and transshipment TEU, vessel calls and vessel size per terminal."""
     # terminal: (base TEU per month, monthly growth, transshipment share, TEU exchanged per call,
     #            average vessel size in TEU). Simulated magnitudes, not official statistics.
     terminals = {
@@ -165,6 +167,7 @@ def port_container_throughput(rng: random.Random) -> None:
 
 
 def port_business_operating_costs(rng: random.Random) -> None:
+    """Monthly cost of each port-business item in SGD, with a simulated USD conversion."""
     # (cost_category, item, zone_or_type, unit, SGD amount in November 2024, yearly drift).
     # Simulated benchmarks, not real tariffs or quotes.
     items = [
