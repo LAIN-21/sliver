@@ -1,1 +1,14 @@
 .env
+.DS_Store
+
+# Machine-specific Claude Code settings (for example local hooks).
+.claude/settings.local.json
+
+# Application dependencies, caches and build output.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/

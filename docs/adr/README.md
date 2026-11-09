@@ -6,6 +6,7 @@ Accepted records:
 
 - [0001-postgresql-primary-relational-database.md](0001-postgresql-primary-relational-database.md)
 - [0002-s3-compatible-object-storage.md](0002-s3-compatible-object-storage.md)
+- [0003-application-stack-and-local-containers.md](0003-application-stack-and-local-containers.md)
 
 Do not add speculative ADRs.
 
