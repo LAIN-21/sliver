@@ -32,12 +32,12 @@ jobs:
           set -euo pipefail
           tools="$RUNNER_TEMP/sliver-linters"
           mkdir -p "$tools"
-          curl --fail --location --silent --show-error --retry 3 \
+          curl --fail --location --silent --show-error --retry 6 --retry-delay 10 --retry-all-errors \
             https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
             --output "$tools/actionlint.tar.gz"
           echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $tools/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$tools/actionlint.tar.gz" -C "$tools" actionlint
-          curl --fail --location --silent --show-error --retry 3 \
+          curl --fail --location --silent --show-error --retry 6 --retry-delay 10 --retry-all-errors \
             https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
             --output "$tools/shellcheck.tar.xz"
           echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $tools/shellcheck.tar.xz" | sha256sum --check
@@ -78,6 +78,8 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://sliver:sliverdev@127.0.0.1:5432/sliver
+      UV_PYTHON_DOWNLOADS: never
+      UV_PYTHON_PREFERENCE: only-system
     defaults:
       run:
         working-directory: apps/api
@@ -85,6 +87,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Use the runner's preinstalled Python instead of downloading one (GitHub release downloads
+      # intermittently return 504).
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.9.17"
