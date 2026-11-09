@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import Engine
 from starlette.concurrency import run_in_threadpool
 
+from .catalog.routes import router as catalog_router
 from .config import Settings, get_settings
 from .db import database_ready, make_engine, make_session_factory
 from .storage import ObjectStore, S3Store
@@ -41,6 +42,8 @@ def create_app(
     app.state.engine = engine
     app.state.sessions = make_session_factory(engine)
     app.state.store = store
+
+    app.include_router(catalog_router)
 
     @app.get("/api/health")
     def health() -> JSONResponse:

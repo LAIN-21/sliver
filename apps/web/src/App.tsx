@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import ActivityPage from "./pages/ActivityPage";
 import MarketplacePage from "./pages/MarketplacePage";
 import NotFoundPage from "./pages/NotFoundPage";
+import ResourcePage from "./pages/ResourcePage";
 import SellPage from "./pages/SellPage";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<MarketplacePage />} />
+        <Route path="resources/:id" element={<ResourcePage />} />
         <Route path="sell" element={<SellPage />} />
         <Route path="activity" element={<ActivityPage />} />
         <Route path="*" element={<NotFoundPage />} />

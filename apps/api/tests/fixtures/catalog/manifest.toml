@@ -1,0 +1,41 @@
+[[sellers]]
+key = "a"
+email = "seller-a@sliver.local"
+display_name = "Seller A"
+
+[[datasets]]
+file = "rates.csv"
+seller = "a"
+title = "Container spot freight rates"
+description = "Weekly spot freight rates per container on lanes out of Singapore."
+category = "freight-rates"
+tags = ["freight", "spot rate", "container"]
+time_column = "week_start"
+slice_by = "lane"
+price_minor = 600
+slice_price_minor = 150
+
+[datasets.provenance]
+source = "Test fixture"
+method = "Handwritten"
+collected_at = "2026-11-01"
+rights_statement = "PRIVATE-RIGHTS-STATEMENT"
+
+[[datasets]]
+file = "berths.csv"
+seller = "a"
+title = "Singapore berth waiting times"
+description = "Daily berth waiting hours at Singapore container terminals."
+category = "port-operations"
+tags = ["port", "berth", "congestion"]
+time_column = "date"
+slice_by = "date"
+slice_period = "month"
+price_minor = 1200
+slice_price_minor = 450
+
+[datasets.provenance]
+source = "Test fixture"
+method = "Handwritten"
+collected_at = "2026-11-01"
+rights_statement = "PRIVATE-RIGHTS-STATEMENT"

@@ -9,13 +9,13 @@ Area instructions may add constraints. They must not weaken repository-wide prod
 ## Current files
 
 - [infrastructure.md](infrastructure.md)
+- [catalog.md](catalog.md)
 
 ## Future files
 
 Add these only when the corresponding boundary is real:
 
 - seller
-- catalog
 - transactions
 - application API
 - database

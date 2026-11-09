@@ -17,6 +17,9 @@ This document records system-level decisions, assumptions, and open questions. P
 - The API and pipeline worker use Python 3.13, FastAPI 0.115.x, SQLAlchemy 2 and Alembic; the web app uses React, TypeScript, Vite and Tailwind CSS. See [ADR 0003](adr/0003-application-stack-and-local-containers.md).
 - Local development runs entirely in Docker Compose: PostgreSQL, MinIO, API, worker and web, published on 127.0.0.1 only.
 - Background jobs will be PostgreSQL rows claimed with `FOR UPDATE SKIP LOCKED`; there is no queue service. The worker does not claim jobs yet; claiming arrives with the first pipeline stage (#13).
+- A Resource ("sliver") is either a whole dataset or one slice of it (one value of a column, or one calendar month of a date column). Each Resource is stored as its own immutable CSV object with its own SHA-256, so delivery and integrity checks never touch the rest of the dataset.
+- Public discovery serializes Resources through one allow-list (`catalog/public.py`) and searches them with PostgreSQL full-text search, matching any query term and ranking by relevance. See [agents/catalog.md](agents/catalog.md).
+- Every catalog query records an anonymous search event. Queries that return nothing are exposed as unmet demand (`GET /api/demand`) for sellers.
 
 ## Current assumptions
 

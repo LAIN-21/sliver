@@ -9,7 +9,7 @@ Additional constraints for infrastructure and local development changes. Reposit
 - Local Compose topology is `postgres`, `minio`, `api`, `worker` and `web`, with named volumes `postgres_data` and `minio_data`.
 - Every published port binds to 127.0.0.1.
 - MinIO is built from the pinned upstream source in `docker/minio/Dockerfile`; do not switch to unreviewed images or mirrors.
-- Public Make targets are `doctor`, `install`, `dev-start`, `dev-stop`, `dev-reset`, `ps`, `logs`, `test`, `lint` and `migrate`.
+- Public Make targets are `doctor`, `install`, `dev-start`, `dev-stop`, `dev-reset`, `ps`, `logs`, `test`, `lint`, `migrate` and `seed`.
 - `dev-stop` must never destroy development data or named volumes.
 - `dev-reset` is the explicit, non-interactive destructive reset for local persisted state.
 - `install` must never overwrite an existing `.env`, and new variables need defaults so older `.env` files keep working.

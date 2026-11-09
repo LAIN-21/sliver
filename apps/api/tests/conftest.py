@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from sliver_api.config import Settings
-from sliver_api.db import make_engine
+from sliver_api.db import make_engine, make_session_factory
 from sliver_api.main import create_app
 from sliver_api.storage import MemoryStore
 
@@ -71,6 +71,22 @@ def engine(settings):
     engine = make_engine(settings.database_url)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(database_url):
+    yield
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("TRUNCATE search_events, resources, datasets, users CASCADE"))
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def sessions(engine):
+    return make_session_factory(engine)
 
 
 @pytest.fixture

@@ -2,7 +2,9 @@ COMPOSE = docker compose --env-file .env -f compose.yml
 
 ensure-env = test -f .env || cp .env.example .env
 
-.PHONY: doctor install dev-start dev-stop dev-reset ps logs test lint migrate
+EXAMPLES = -v $(CURDIR)/examples:/examples:ro
+
+.PHONY: doctor install dev-start dev-stop dev-reset ps logs test lint migrate seed
 
 doctor:
 	sh scripts/doctor.sh
@@ -33,7 +35,7 @@ logs:
 
 test:
 	@$(ensure-env)
-	$(COMPOSE) run --rm api pytest
+	$(COMPOSE) run --rm $(EXAMPLES) -e SLIVER_EXAMPLES_DIR=/examples/datasets api pytest
 
 lint:
 	@$(ensure-env)
@@ -43,3 +45,7 @@ lint:
 migrate:
 	@$(ensure-env)
 	$(COMPOSE) run --rm api alembic upgrade head
+
+seed:
+	@$(ensure-env)
+	$(COMPOSE) run --rm $(EXAMPLES) api python -m sliver_api.seed /examples/datasets

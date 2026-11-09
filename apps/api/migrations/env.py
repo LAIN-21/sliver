@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+import sliver_api.models  # noqa: F401  (registers tables on the metadata for autogenerate)
 from sliver_api.db import Base
 
 config = context.config
