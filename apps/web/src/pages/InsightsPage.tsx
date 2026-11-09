@@ -29,8 +29,11 @@ function Insights() {
   const [state, setState] = useState<State>({ kind: "loading" });
   // The stream starts once, from the first load's cursor; later reloads only refresh the numbers.
   const [cursor, setCursor] = useState<number | null>(null);
+  // A failed live refresh keeps the last data on screen and says so, instead of replacing it.
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const latest = useRef(0);
   const owned = useRef(new Set<string>());
+  const loaded = useRef(false);
   const now = useNow();
 
   const load = useCallback((signal?: AbortSignal) => {
@@ -39,13 +42,17 @@ function Insights() {
       .then((insights) => {
         if (request !== latest.current) return; // a newer reload is on its way
         owned.current = new Set(insights.resource_ids);
+        loaded.current = true;
+        setRefreshError(null);
         setState({ kind: "ready", insights });
         setCursor((current) => current ?? insights.cursor);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         if (request !== latest.current) return;
-        setState({ kind: "error", message: error instanceof ApiError ? error.message : "Insights could not be loaded." });
+        const message = error instanceof ApiError ? error.message : "Insights could not be loaded.";
+        if (loaded.current) setRefreshError(message);
+        else setState({ kind: "error", message });
       });
   }, []);
 
@@ -78,6 +85,14 @@ function Insights() {
         </PageHeader>
         <LiveBadge status={status} />
       </div>
+      {refreshError ? (
+        <div role="status" className="mb-6 flex flex-wrap items-center gap-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>Could not refresh ({refreshError}); showing the last loaded figures.</span>
+          <button type="button" onClick={() => load()} className="font-medium text-brand hover:underline">
+            Retry
+          </button>
+        </div>
+      ) : null}
 
       <dl className="grid gap-4 sm:grid-cols-3">
         <Stat label="Earned" value={formatPrice(earnings.usd_minor)} hint={formatAmount(earnings.xrp_drops, "XRP")} />

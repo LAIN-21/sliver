@@ -167,6 +167,14 @@ def publish_dataset(
         dataset = pricing.publish(db, request.app.state.store, seller, dataset_id, form)
     except pricing.NotPublishable:
         raise HTTPException(status_code=409, detail=NOT_READY) from None
+    except pricing.PricesChanged:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Suggested prices changed since you loaded them (new demand or comparables). "
+                "Reload and review."
+            ),
+        ) from None
     except pricing.InvalidSelection as error:
         raise HTTPException(status_code=422, detail=str(error)) from None
     except pricing.DataUnavailable:

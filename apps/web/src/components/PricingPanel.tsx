@@ -20,6 +20,9 @@ export default function PricingPanel({
   onPublished: (dataset: SellerDatasetDetail) => void;
 }) {
   const [state, setState] = useState<State>({ kind: "loading" });
+  // Bumped to fetch the report again, e.g. after the suggestions changed under the seller.
+  const [version, setVersion] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -31,16 +34,26 @@ export default function PricingPanel({
         setState({ kind: "error", message: error instanceof ApiError ? error.message : "The valuation could not be loaded." });
       });
     return () => controller.abort();
-  }, [dataset.id, dataset.status]);
+  }, [dataset.id, dataset.status, version]);
+
+  function onStale(message: string) {
+    setNotice(message);
+    setVersion((current) => current + 1);
+  }
 
   return (
     <section className="mt-6 rounded-xl border border-line bg-white p-5">
       <h2 className="text-lg font-semibold">{dataset.status === "published" ? "Published prices" : "Price and publish"}</h2>
+      {notice ? (
+        <p role="status" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {notice} The suggestions below are current.
+        </p>
+      ) : null}
       {state.kind === "loading" ? <p className="mt-2 text-sm text-muted">Computing the valuation…</p> : null}
       {state.kind === "error" ? <p className="mt-2 text-sm text-red-700">{state.message}</p> : null}
       {state.kind === "ready" ? (
         state.report.publishable ? (
-          <Publish report={state.report} onPublished={onPublished} />
+          <Publish report={state.report} onPublished={onPublished} onStale={onStale} />
         ) : (
           <Published report={state.report} />
         )
@@ -71,7 +84,15 @@ function parseDollars(text: string): number | null {
   return Number.isSafeInteger(minor) ? minor : null;
 }
 
-function Publish({ report, onPublished }: { report: ValuationReport; onPublished: (dataset: SellerDatasetDetail) => void }) {
+function Publish({
+  report,
+  onPublished,
+  onStale,
+}: {
+  report: ValuationReport;
+  onPublished: (dataset: SellerDatasetDetail) => void;
+  onStale: (message: string) => void;
+}) {
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<number[]>([]);
   const [open, setOpen] = useState<string | null>(report.slivers[0]?.id ?? null);
@@ -97,8 +118,16 @@ function Publish({ report, onPublished }: { report: ValuationReport; onPublished
     setBusy(true);
     setError(null);
     try {
-      onPublished(await publishDataset(report.dataset_id, prices, selected));
+      const suggested = Object.fromEntries(
+        report.slivers.flatMap((sliver) => (sliver.valuation ? [[sliver.id, sliver.valuation.suggested_price_minor]] : [])),
+      );
+      onPublished(await publishDataset(report.dataset_id, prices, selected, suggested));
     } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 409) {
+        // The suggestions moved (new demand or comparables), or the dataset changed state: reload.
+        onStale(failure.message);
+        return;
+      }
       setError(failure instanceof ApiError ? failure.message : "Could not publish.");
       setBusy(false);
     }

@@ -139,9 +139,17 @@ export function getValuation(id: string, signal?: AbortSignal): Promise<Valuatio
   return request<ValuationReport>(`/seller/datasets/${encodeURIComponent(id)}/valuation`, { signal });
 }
 
-/** `prices` holds only the seller's overrides (USD cents); every other sliver takes the suggestion. */
-export function publishDataset(id: string, prices: Record<string, number>, sampleRows: number[]): Promise<SellerDatasetDetail> {
-  const body = JSON.stringify({ prices, sample_rows: sampleRows });
+/**
+ * `prices` holds only the seller's overrides (USD cents); every other sliver takes its suggestion.
+ * `suggested` is what the seller saw: if a suggestion changed meanwhile the API answers 409.
+ */
+export function publishDataset(
+  id: string,
+  prices: Record<string, number>,
+  sampleRows: number[],
+  suggested: Record<string, number>,
+): Promise<SellerDatasetDetail> {
+  const body = JSON.stringify({ prices, sample_rows: sampleRows, suggested });
   const init = { method: "POST", body, headers: { "Content-Type": "application/json" } };
   return request<SellerDatasetDetail>(`/seller/datasets/${encodeURIComponent(id)}/publish`, init);
 }

@@ -283,6 +283,30 @@ def test_accepting_or_overriding_the_price_publishes_to_the_catalog(seller, sess
     assert publish(seller, dataset_id).status_code == 409
 
 
+def test_publishing_refuses_a_suggestion_that_changed_since_the_seller_saw_it(
+    seller, sessions, store, client
+):
+    dataset_id = accepted(seller, sessions, store)
+    seen = report(seller, dataset_id)
+    suggested = {sliver["id"]: sliver["valuation"]["suggested_price_minor"] for sliver in seen["slivers"]}
+    for _ in range(3):  # new unmet demand raises the suggestion meanwhile
+        client.get("/api/catalog", params={"q": "spot rates lane"})
+    stale = publish(seller, dataset_id, suggested=suggested)
+    assert stale.status_code == 409 and "Reload" in stale.text
+    with sessions() as db:
+        assert {r.status for r in db.scalars(select(Resource).where(Resource.dataset_id == dataset_id))} == {
+            "draft"
+        }
+    # An override needs no matching suggestion; the rest must match the current ones.
+    current = report(seller, dataset_id)
+    fresh = {sliver["id"]: sliver["valuation"]["suggested_price_minor"] for sliver in current["slivers"]}
+    assert fresh != suggested
+    overridden = current["slivers"][1]["id"]
+    response = publish(seller, dataset_id, suggested={**fresh, overridden: 1}, prices={overridden: 777})
+    assert response.status_code == 200, response.text
+    assert client.get(f"/api/catalog/{overridden}").json()["price"]["amount_minor"] == 777
+
+
 def test_only_the_owner_prices_and_publishes_accepted_datasets(
     seller, reviewer, make_client, sessions, store
 ):
@@ -305,6 +329,7 @@ def test_only_the_owner_prices_and_publishes_accepted_datasets(
     assert publish(seller, dataset_id, prices={sliver_id: 0}).status_code == 422
     assert publish(seller, dataset_id, prices={sliver_id: valuation.MAX_PRICE_MINOR + 1}).status_code == 422
     assert publish(seller, dataset_id, prices={"not-a-sliver": 100}).status_code == 422
+    assert publish(seller, dataset_id, suggested={"not-a-sliver": 100}).status_code == 422
     with sessions() as db:
         assert {r.status for r in db.scalars(select(Resource).where(Resource.dataset_id == dataset_id))} == {
             "draft"

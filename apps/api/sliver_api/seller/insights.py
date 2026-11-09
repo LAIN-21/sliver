@@ -6,7 +6,7 @@ funds. The page follows the public activity stream from `cursor` and reloads thi
 of `resource_ids` is delivered.
 """
 
-from sqlalchemy import func, select
+from sqlalchemy import Numeric, and_, case, cast, func, select
 from sqlalchemy.orm import Session
 
 from .. import valuation
@@ -38,21 +38,21 @@ def insights(db: Session, seller: User) -> dict:
         .order_by(Payment.settled_at.desc().nulls_last(), Payment.id)
         .limit(MAX_PURCHASES)
     ).all()
-    count, usd_minor = db.execute(
-        select(func.count(), func.coalesce(func.sum(Payment.price_minor), 0))
+    # XRP amounts are drop strings; anything else (another asset, a malformed value) counts as 0.
+    xrp_drops = case(
+        (and_(Payment.asset == "XRP", Payment.amount.op("~")("^[0-9]+$")), cast(Payment.amount, Numeric)),
+        else_=0,
+    )
+    count, usd_minor, drops = db.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(Payment.price_minor), 0),
+            func.coalesce(func.sum(xrp_drops), 0),
+        )
         .select_from(Payment)
         .join(Resource, Payment.resource_id == Resource.id)
         .where(*delivered)
     ).one()
-    drops = sum(
-        int(amount)
-        for amount, asset in db.execute(
-            select(Payment.amount, Payment.asset)
-            .join(Resource, Payment.resource_id == Resource.id)
-            .where(*delivered)
-        )
-        if asset == "XRP" and amount.isdigit()
-    )
 
     demand = []
     for item in unmet_demand(db, DEMAND_DAYS, DEMAND_LIMIT):
@@ -70,7 +70,7 @@ def insights(db: Session, seller: User) -> dict:
         "earnings": {
             "purchases": count,
             "usd_minor": int(usd_minor),
-            "xrp_drops": str(drops),
+            "xrp_drops": str(int(drops)),
             "items": [
                 {
                     "payment_id": payment.id,

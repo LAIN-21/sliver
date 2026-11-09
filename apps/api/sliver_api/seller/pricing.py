@@ -55,6 +55,10 @@ class NotPublishable(Exception):
     """The dataset is not (or no longer) waiting for pricing."""
 
 
+class PricesChanged(Exception):
+    """A suggestion the seller accepted is no longer the current one (demand or comparables moved)."""
+
+
 class DataUnavailable(Exception):
     """The stored upload could not be read or no longer matches its SHA-256."""
 
@@ -66,6 +70,9 @@ class InvalidSelection(ValueError):
 class PublishForm(BaseModel):
     # Price overrides in USD cents by sliver id; slivers left out take the suggested price.
     prices: dict[ResourceId, Price] = Field(default_factory=dict, max_length=200)
+    # The suggestions the seller saw, by sliver id. A sliver without an override is published only
+    # if its current suggestion still equals this one; otherwise the seller is asked to reload.
+    suggested: dict[ResourceId, Price] = Field(default_factory=dict, max_length=200)
     # 1-based data row numbers of the uploaded CSV to show publicly. Empty keeps every row private.
     sample_rows: list[Annotated[int, Field(ge=1)]] = Field(
         default_factory=list, max_length=MAX_PUBLIC_SAMPLE_ROWS
@@ -463,12 +470,22 @@ def publish(
     if dataset.status != PUBLISHABLE or not drafts:
         db.rollback()
         raise NotPublishable(dataset.status)
-    unknown = set(form.prices) - {resource.id for resource in drafts}
+    unknown = (set(form.prices) | set(form.suggested)) - {resource.id for resource in drafts}
     if unknown:
         db.rollback()
         raise InvalidSelection("A price was given for a sliver that is not a draft of this dataset.")
 
     steps, inputs, priced = price_all(db, dataset, drafts)
+    stale = [
+        resource.id
+        for resource in drafts
+        if resource.id not in form.prices
+        and resource.id in form.suggested
+        and form.suggested[resource.id] != priced[resource.id].suggested_price_minor
+    ]
+    if stale:
+        db.rollback()
+        raise PricesChanged(stale)
     try:
         table = read_dataset(store, dataset)
         chosen = check_sample(table, form.sample_rows, flagged_columns(findings(steps, "privacy")))
