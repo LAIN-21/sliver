@@ -167,3 +167,13 @@ def test_a_save_failure_after_payment_reports_the_spend(buyer, tmp_path):
     assert caught.value.paid["spent_usd"] == 1.5 and caught.value.paid["tx_hash"]
     assert buyer.store.purchases()[0]["status"] == "delivered_unsaved"
     assert buyer.store.spent_minor() == 150
+
+
+def test_a_non_object_error_after_payment_is_recorded_as_failed(buyer, stub):
+    stub.paid_response = httpx.Response(502, json=["upstream", "error"])
+    with pytest.raises(Refused) as caught:
+        buyer.buy(CHEAP, budget_usd=5)
+    assert caught.value.code == "payment_not_delivered" and caught.value.paid["tx_hash"]
+    assert "http_error" in caught.value.message
+    assert buyer.store.purchases()[0]["status"] == "failed"
+    assert buyer.store.spent_minor() == 150

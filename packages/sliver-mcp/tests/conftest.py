@@ -110,6 +110,7 @@ class StubSliver:
         self.payments: list[dict] = []  # signed transactions the facilitator saw
         self.receipts: dict[str, dict] = {}
         self.overrides: dict[str, httpx.Response] = {}  # path prefix -> canned (malformed) response
+        self.paid_response: httpx.Response | None = None  # canned answer to a paid request
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -160,6 +161,8 @@ class StubSliver:
         header = request.headers.get("PAYMENT-SIGNATURE")
         if not header:
             return self.challenge(request, resource_id)
+        if self.paid_response is not None:
+            return self.paid_response
         envelope = json.loads(base64.b64decode(header))
         invoice = self.invoices.get(envelope["accepted"]["extra"]["invoiceId"])
         if invoice is None or envelope["accepted"] != invoice["accepted"]:
