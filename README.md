@@ -4,7 +4,7 @@
 
 Ripple track. Built after the team's SingHacks finalist [Ledger402](https://github.com/LAIN-21/ripple-challenge), see [Since SingHacks](#since-singhacks).
 
-| | |
+| Looking for | Go to |
 |---|---|
 | Buy from your own agent | [Sliver MCP](packages/sliver-mcp/README.md): free and open source, runs on your machine |
 | How payment works | [x402 on XRPL Testnet](#x402-on-xrpl-testnet-step-by-step) · [ADR 0004](docs/adr/0004-x402-payments-on-xrpl.md) |
@@ -23,43 +23,35 @@ Ripple track. Built after the team's SingHacks finalist [Ledger402](https://gith
 ## Architecture
 
 ```mermaid
-flowchart TB
-  subgraph Seller["Seller (browser)"]
-    S["/sell: upload CSV + provenance"]
-  end
+flowchart LR
+  SEL["Seller<br/>web app /sell"]
+  AG["Buyer's agent + Sliver MCP<br/>on the buyer's machine:<br/>budget caps, local signing"]
 
-  subgraph Sliver["Sliver (Docker Compose, 127.0.0.1)"]
-    API["FastAPI API"]
-    W["Pipeline worker<br/>validate → profile → privacy → duplicates →<br/>Claude review → research (opt-in) → package → decide"]
-    PG[("PostgreSQL<br/>catalog, jobs, payments,<br/>activity events")]
-    S3[("MinIO (private)<br/>immutable CSVs + SHA-256")]
-    WEB["Web app<br/>marketplace, /activity live timeline"]
-  end
-
-  subgraph Buyer["Buyer machine"]
-    AG["Buyer's agent<br/>(Claude Desktop, Claude Code, Cursor)"]
-    MCP["Sliver MCP<br/>budget caps, local signing"]
+  subgraph SL["Sliver (Docker Compose)"]
+    direction TB
+    API["API (FastAPI)<br/>catalog · x402 gate · activity"]
+    W["Pipeline worker<br/>8 stages incl. Claude review"]
+    DB[("PostgreSQL<br/>catalog, jobs, payments")]
+    OBJ[("MinIO<br/>immutable CSVs + SHA-256")]
+    API --- DB
+    API --- OBJ
+    W --- DB
+    W --- OBJ
   end
 
   CL["Claude API"]
-  FAC["x402 facilitator<br/>(t54 Testnet; x402.org fallback)"]
+  FAC["x402 facilitator<br/>t54 (x402.org fallback)"]
   XRPL[("XRPL Testnet<br/>xrpl:1")]
 
-  S --> API
-  API --> PG
-  API --> S3
-  W --> PG
-  W --> S3
-  W -- "schema, profile, ≤20 redacted rows" --> CL
-  AG --> MCP
-  MCP -- "search / inspect (metadata only)" --> API
-  MCP -- "GET data · PAYMENT-SIGNATURE" --> API
+  SEL -- "upload CSV" --> API
+  W -- "schema, profile,<br/>≤20 redacted rows" --> CL
+  AG -- "search (metadata only),<br/>GET data → 402 → PAYMENT-SIGNATURE" --> API
   API -- "/verify, /settle" --> FAC
-  FAC -- "submit signed Payment" --> XRPL
-  API -- "independent ledger re-check" --> XRPL
-  MCP -. "Payment straight to seller's address" .-> XRPL
-  WEB --> API
+  FAC -- "submit buyer's Payment<br/>straight to the seller" --> XRPL
+  API -. "independent re-check" .-> XRPL
 ```
+
+Pipeline stages: validate → profile → privacy → duplicates → Claude review → research (opt-in) → package → decide. The web app (marketplace, seller pages, live `/activity` timeline) talks to the same API.
 
 The four responsibilities (seller, catalog, buyer interface, transactions) and every decision behind them are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Product invariants are in [docs/PRODUCT.md](docs/PRODUCT.md). The stack (Python 3.13, FastAPI 0.115, SQLAlchemy 2, PostgreSQL, MinIO, React + Vite) is in [ADR 0003](docs/adr/0003-application-stack-and-local-containers.md).
 
