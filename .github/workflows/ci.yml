@@ -27,31 +27,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install pinned linters
-        run: |
-          set -euo pipefail
-          tools="$RUNNER_TEMP/sliver-linters"
-          mkdir -p "$tools"
-          curl --fail --location --silent --show-error --retry 6 --retry-delay 10 --retry-all-errors \
-            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
-            --output "$tools/actionlint.tar.gz"
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $tools/actionlint.tar.gz" | sha256sum --check
-          tar -xzf "$tools/actionlint.tar.gz" -C "$tools" actionlint
-          curl --fail --location --silent --show-error --retry 6 --retry-delay 10 --retry-all-errors \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
-            --output "$tools/shellcheck.tar.xz"
-          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $tools/shellcheck.tar.xz" | sha256sum --check
-          tar -xJf "$tools/shellcheck.tar.xz" -C "$tools" --strip-components=1 shellcheck-v0.11.0/shellcheck
-          echo "$tools" >> "$GITHUB_PATH"
-
+      # Official linter images pinned by digest (avoids GitHub release downloads, which time out).
       - name: Check shell scripts and workflows
+        env:
+          ACTIONLINT: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          SHELLCHECK: koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
         run: |
           set -euo pipefail
           for script in scripts/*.sh; do
             sh -n "$script"
           done
-          shellcheck scripts/*.sh
-          actionlint
+          docker run --rm -v "$PWD":/mnt "$SHELLCHECK" scripts/*.sh
+          docker run --rm -v "$PWD":/repo --workdir /repo "$ACTIONLINT"
 
       - name: Validate Compose configuration
         run: |

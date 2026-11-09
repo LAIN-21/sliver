@@ -18,6 +18,7 @@ export default function MarketplacePage() {
   const [maxDraft, setMaxDraft] = useState(maxUsd);
   const [categories, setCategories] = useState<CategoryCount[]>([]);
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => setDraft(q), [q]);
   useEffect(() => setMaxDraft(maxUsd), [maxUsd]);
@@ -40,6 +41,25 @@ export default function MarketplacePage() {
       });
     return () => controller.abort();
   }, [q, category, maxUsd]);
+
+  async function showMore() {
+    if (state.kind !== "ready") return;
+    setLoadingMore(true);
+    try {
+      const page = state.page;
+      const next = await searchCatalog({
+        q,
+        category,
+        maxPriceMinor: toPriceMinor(maxUsd),
+        offset: page.items.length,
+      });
+      setState({ kind: "ready", page: { ...next, items: [...page.items, ...next.items] } });
+    } catch (error) {
+      setState({ kind: "error", message: error instanceof ApiError ? error.message : "Search failed." });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function update(next: Record<string, string>) {
     const merged = new URLSearchParams(params);
@@ -127,6 +147,18 @@ export default function MarketplacePage() {
               <ResourceCard key={resource.id} resource={resource} />
             ))}
           </ul>
+          {state.page.items.length < state.page.total ? (
+            <button
+              type="button"
+              onClick={showMore}
+              disabled={loadingMore}
+              className="mt-4 w-full rounded-lg border border-line bg-white px-4 py-2 font-medium hover:bg-surface disabled:opacity-60"
+            >
+              {loadingMore
+                ? "Loading…"
+                : `Show more (${state.page.total - state.page.items.length} remaining)`}
+            </button>
+          ) : null}
         </>
       ) : null}
     </>

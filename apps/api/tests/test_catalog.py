@@ -201,3 +201,11 @@ def test_changed_seed_csv_requires_a_reset(sessions, store, tmp_path):
         seed(sessions, store, folder)
     with sessions() as db:
         assert db.scalar(select(func.count()).select_from(Resource)) == 6
+
+
+def test_reseed_restores_objects_missing_from_storage(sessions, store):
+    seed(sessions, store, FIXTURES)
+    expected = dict(store.objects)
+    store.objects.clear()  # e.g. the bucket was replaced while the database kept its rows
+    assert seed(sessions, store, FIXTURES)["created_resources"] == 0
+    assert store.objects == expected
