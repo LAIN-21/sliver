@@ -114,8 +114,9 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
     if dataset is not None and dataset.sha256 != hashlib.sha256(raw).hexdigest():
         # Datasets are immutable: new slices must never mix rows the stored dataset does not contain.
         raise RuntimeError(f"{path.name} changed since it was seeded; run `make dev-reset` and seed again")
+    # Write (or restore, if the bucket lost it) the object; its hash was checked above.
+    store_object(store, dataset_key, raw)
     if dataset is None:
-        store_object(store, dataset_key, raw)
         dataset = Dataset(
             owner_id=owner.id,
             title=spec["title"],
@@ -149,9 +150,14 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
     created = 0
     for key_part, label, slice_filter, group, price in slices:
         object_key = f"resources/seed/{stem}/{key_part}.csv"
-        if db.scalar(select(Resource.id).where(Resource.object_key == object_key)):
-            continue
         body = to_csv(header, group)
+        existing_sha = db.scalar(select(Resource.sha256).where(Resource.object_key == object_key))
+        if existing_sha is not None:
+            if existing_sha != hashlib.sha256(body).hexdigest():
+                message = f"{object_key} no longer matches its published hash; run `make dev-reset`"
+                raise RuntimeError(message)
+            store_object(store, object_key, body)  # restores the object if the bucket lost it
+            continue
         store_object(store, object_key, body)
         resource_coverage = coverage(header, group, spec.get("time_column"))
         if slice_filter:
