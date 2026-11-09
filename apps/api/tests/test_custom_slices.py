@@ -11,11 +11,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from sliver_api import valuation
+from sliver_api.config import Settings
 from sliver_api.main import create_app
 from sliver_api.models import ActivityEvent, Dataset, PipelineStep, Resource, User
+from sliver_api.ratelimit import Budget, TokenBuckets, budget_for
 from sliver_api.seed import seed
 from sliver_api.slices import custom
-from sliver_api.slices.quota import QuoteBudget, client_key
 
 SELLER_EMAIL = "seller@example.test"
 TERMINALS = ("Tuas", "Keppel")
@@ -288,34 +289,33 @@ def test_stored_custom_slices_are_capped_per_parent(listed, client, monkeypatch)
 # --- rate limit -----------------------------------------------------------------------------
 
 
-def test_quotes_are_rate_limited_per_client(listed, client):
-    client.app.state.slice_quotes = QuoteBudget(per_minute=2)
-    assert quote(client, listed["full"], **FIRST_TEN_TUAS).status_code == 201
-    assert quote(client, listed["full"], **FIRST_TEN_TUAS).status_code == 200
-    limited = quote(client, listed["full"], **FIRST_TEN_TUAS)
-    assert limited.status_code == 429 and error(limited)["code"] == "rate_limited"
-    assert int(limited.headers["retry-after"]) >= 1
+def test_quotes_have_their_own_per_ip_budget(listed, settings, engine, store):
+    limited = settings.model_copy(
+        update={"sliver_rate_limit_enabled": True, "sliver_rate_limit_slice_quote_per_minute": 2}
+    )
+    app = create_app(limited, engine=engine, store=store, rate_buckets=TokenBuckets(clock=lambda: 1000.0))
+    with (
+        TestClient(app, client=("203.0.113.7", 50000)) as first,
+        TestClient(app, client=("198.51.100.4", 50000)) as second,
+    ):
+        assert quote(first, listed["full"], **FIRST_TEN_TUAS).status_code == 201
+        assert quote(first, listed["full"], **FIRST_TEN_TUAS).status_code == 200
+        limited_response = quote(first, listed["full"], **FIRST_TEN_TUAS)
+        assert limited_response.status_code == 429
+        assert limited_response.headers["retry-after"] == "30"
+        # Another client, and other routes, keep their own budgets.
+        assert quote(second, listed["full"], **FIRST_TEN_TUAS).status_code == 200
+        assert first.get(f"/api/catalog/{listed['full']}").status_code == 200
 
 
-def test_the_quote_budget_refills_and_keys_ipv6_by_prefix():
-    now = [0.0]
-    budget = QuoteBudget(per_minute=2, clock=lambda: now[0])
-    assert budget.take("10.0.0.1") == 0 and budget.take("10.0.0.1") == 0
-    assert budget.take("10.0.0.1") == 30
-    assert budget.take("10.0.0.2") == 0  # another client has its own budget
-    now[0] = 30.0
-    assert budget.take("10.0.0.1") == 0
-    assert client_key("2001:db8::1") == client_key("2001:db8::2") == "2001:db8::/64"
-    assert client_key("::ffff:10.0.0.1") == "10.0.0.1"
-
-
-def test_the_quote_budget_forgets_idle_clients_when_full():
-    now = [0.0]
-    budget = QuoteBudget(per_minute=1, clock=lambda: now[0], max_tracked=2)
-    budget.take("a")
-    budget.take("b")
-    now[0] = 120.0
-    assert budget.take("c") == 0 and set(budget.buckets) == {"c"}
+def test_the_quote_route_maps_to_the_slice_quote_budget():
+    config = Settings(
+        database_url="postgresql+psycopg://x@y/z", s3_endpoint_url="http://s3", s3_access_key_id="a",
+        s3_secret_access_key="b", sliver_rate_limit_slice_quote_per_minute=7,
+    ).rate_limits  # fmt: skip
+    scope = {"method": "GET", "path": "/api/resources/abc/slices", "headers": []}
+    assert budget_for(scope, config, "/upload") == Budget("slice_quote", 7)
+    assert budget_for({**scope, "path": "/api/resources/abc/slices/x"}, config, "/upload") is None
 
 
 # --- pricing --------------------------------------------------------------------------------

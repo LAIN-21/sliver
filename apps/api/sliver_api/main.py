@@ -21,7 +21,6 @@ from .ratelimit import RateLimit, TokenBuckets
 from .security import BodyLimit, OriginCheck
 from .seller.routes import UPLOAD_BODY_LIMIT, UPLOAD_PATH
 from .seller.routes import router as seller_router
-from .slices.quota import QuoteBudget
 from .slices.routes import router as slices_router
 from .storage import ObjectStore, S3Store
 
@@ -62,8 +61,6 @@ def create_app(
     app.state.purchases = PurchaseService(
         settings, store, facilitator, ledger, activity=ActivityLog(app.state.sessions)
     )
-    # Per-IP budget for custom-slice quotes (#39); tests may replace it.
-    app.state.slice_quotes = QuoteBudget()
 
     app.include_router(catalog_router)
     app.include_router(payments_router)

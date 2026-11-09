@@ -16,11 +16,8 @@ NO_STORE = {"Cache-Control": "no-store"}
 
 
 def refusal(status: int, code: str, message: str, **extra) -> JSONResponse:
-    headers = dict(NO_STORE)
-    if "retry_after" in extra:
-        headers["Retry-After"] = str(extra["retry_after"])
     return JSONResponse(
-        status_code=status, content={"error": {"code": code, "message": message, **extra}}, headers=headers
+        status_code=status, content={"error": {"code": code, "message": message, **extra}}, headers=NO_STORE
     )
 
 
@@ -54,11 +51,9 @@ def quote_custom_slice(
     The answer is an unlisted, published Resource: its id, rows, coverage, price with breakdown
     and SHA-256. Buy it with `GET /api/resources/{id}/data` (x402). Identical requests return the
     same Resource. A GET, not a POST: agents send no browser Origin, the endpoint uses no cookies,
-    and the result is deterministic, so repeating it changes nothing.
+    and the result is deterministic, so repeating it changes nothing. Quotes have their own
+    per-IP budget (`SLIVER_RATE_LIMIT_SLICE_QUOTE_PER_MINUTE`, sliver_api/ratelimit.py).
     """
-    wait = request.app.state.slice_quotes.take(request.client.host if request.client else None)
-    if wait:
-        return refusal(429, "rate_limited", f"Too many quotes. Retry in {wait} seconds.", retry_after=wait)
     store = request.app.state.store
     for attempt in range(2):
         try:
