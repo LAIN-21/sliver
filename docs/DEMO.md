@@ -9,7 +9,13 @@ The video follows one story: a seller lists and prices data, a buying agent in C
 Start from a freshly seeded stack so the timeline shows only the demo purchase.
 
 1. On a fresh checkout, run `make install` first so `.env` is created from `.env.example` (don't create it by hand: `make` only copies the example when `.env` is missing). Set `SLIVER_SELLER_PASSWORD`, `SLIVER_REVIEWER_PASSWORD` and `ANTHROPIC_API_KEY` in `.env` (the dataset page should say "Written by Claude", not "offline fallback"). If earlier test purchases are on the timeline, run `make dev-reset` first; it deletes all local data. Then run `make dev-start`, `make seed` and `make wallets` (re-run `make wallets` after every reset, see [DEVELOPMENT.md](DEVELOPMENT.md#make-targets)).
-2. Install the [Sliver MCP](../packages/sliver-mcp/README.md) in Claude Desktop with `"SLIVER_API_URL": "http://127.0.0.1:8000"`, and run `sliver-mcp wallet init` so the buyer wallet is funded. If a wallet already exists, `wallet init` reuses it without funding it again: check the balance with `sliver-mcp wallet show` and make sure it covers the purchase after rehearsals. Keep the default caps ($5 per purchase, $20 per day).
+2. Install the [Sliver MCP](../packages/sliver-mcp/README.md) in Claude Desktop with `"SLIVER_API_URL": "http://127.0.0.1:8000"`, and create the funded buyer wallet (the Claude Desktop setup doesn't put `sliver-mcp` on your shell's PATH, so use `uvx`):
+
+   ```bash
+   uvx --from "git+https://github.com/LAIN-21/sliver#subdirectory=packages/sliver-mcp" sliver-mcp wallet init
+   ```
+
+   If a wallet already exists, `wallet init` reuses it without funding it again. After rehearsals, run the same command with `wallet show` instead of `wallet init` and make sure the balance covers the purchase. Keep the default caps ($5 per purchase, $20 per day).
 3. Prepare the seller CSV for scene 2. It must not duplicate a seeded dataset: the duplicates stage flags exact and near copies of published data and sends them to the reviewer. It should also be accepted automatically (quality score of at least 70, no blocking findings), because only an accepted dataset can be priced and published. Rehearse the upload once before the final `make dev-reset` to check this.
 4. Open browser tabs: http://127.0.0.1:5173/sell/login, http://127.0.0.1:5173/activity, and https://testnet.xrpl.org. After signing in, open http://127.0.0.1:5173/sell/insights in a fourth tab; it updates live, so leave it open through scene 6.
 5. **Never show `.env`, a wallet seed, `~/.sliver/wallet.json`, an API key or a password on screen.** Type the seller password off camera or blur it. `sliver_wallet` shows only the address and balance, so it is safe to show.
