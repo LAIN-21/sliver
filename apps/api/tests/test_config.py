@@ -20,8 +20,10 @@ def test_secret_is_not_in_repr():
     assert "secret" not in repr(settings)
 
 
-def test_builds_database_url_from_parts_with_escaped_credentials():
+def test_builds_database_url_from_parts_with_escaped_credentials(monkeypatch):
     from sqlalchemy.engine import make_url
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)  # an explicit URL would take precedence
 
     settings = Settings(
         postgres_host="postgres",
