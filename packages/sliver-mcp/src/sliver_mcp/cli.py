@@ -1,6 +1,7 @@
 """`sliver-mcp`: run the stdio MCP server; `sliver-mcp wallet init|show` manages the Testnet wallet."""
 
 import argparse
+import logging
 import os
 import sys
 
@@ -42,4 +43,5 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(wallet_command(config, args.action))
     from .server import build_server
 
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # keep request lines out of the client's logs
     build_server(config).run("stdio")
