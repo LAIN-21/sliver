@@ -47,9 +47,17 @@ def create_app(
 
     @app.get("/api/health")
     def health() -> JSONResponse:
+        storage_ready = store.ready()
+        if not storage_ready:
+            # A failed bucket bootstrap at startup heals on the next health probe.
+            try:
+                store.initialize()
+                storage_ready = store.ready()
+            except Exception:
+                logger.warning("private storage still unavailable")
         checks = {
             "database": "ok" if database_ready(engine) else "unavailable",
-            "storage": "ok" if store.ready() else "unavailable",
+            "storage": "ok" if storage_ready else "unavailable",
         }
         healthy = all(value == "ok" for value in checks.values())
         return JSONResponse(

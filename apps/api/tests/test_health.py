@@ -26,3 +26,26 @@ def test_health_degraded_when_database_is_unavailable(settings, store):
         response = client.get("/api/health")
     assert response.status_code == 503
     assert response.json()["checks"] == {"database": "unavailable", "storage": "ok"}
+
+
+class BucketMissingUntilInitialized(MemoryStore):
+    """Simulates a bucket bootstrap that failed at startup and succeeds later."""
+
+    def __init__(self):
+        super().__init__(healthy=False)
+        self.attempts = 0
+
+    def initialize(self) -> None:
+        self.attempts += 1
+        if self.attempts == 1:
+            raise ConnectionError("storage not reachable yet")
+        self.healthy = True
+
+
+def test_health_retries_storage_bootstrap_until_it_succeeds(settings, engine):
+    store = BucketMissingUntilInitialized()
+    with TestClient(create_app(settings, engine=engine, store=store)) as client:
+        assert store.attempts == 1  # startup attempt failed
+        response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.json()["checks"]["storage"] == "ok"
