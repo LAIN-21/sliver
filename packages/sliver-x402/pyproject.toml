@@ -1,0 +1,14 @@
+[project]
+name = "sliver-x402"
+version = "0.1.0"
+description = "Minimal x402 v2 client for the XRPL exact scheme (XRPL Testnet)"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "xrpl-py>=5.2,<6",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.17,<0.10"]
+build-backend = "uv_build"

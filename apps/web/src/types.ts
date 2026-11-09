@@ -28,6 +28,80 @@ export type CatalogPage = { items: PublicResource[]; total: number; limit: numbe
 
 export type CategoryCount = { category: string; count: number };
 
+// Private seller and reviewer views, mirroring apps/api/sliver_api/seller/uploads.py.
+
+export type Account = { id: string; email: string; display_name: string; role: "seller" | "reviewer" };
+
+export type StepStatus = "pending" | "running" | "passed" | "warning" | "failed" | "skipped";
+
+export type DatasetStatus = "queued" | "inspecting" | "review" | "rejected" | "accepted";
+
+export type Finding = {
+  code: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+  column?: string;
+  rows?: number[];
+  count?: number;
+  matched_dataset?: string;
+};
+
+export type StepSummary = {
+  stage: string;
+  label: string;
+  status: StepStatus;
+  summary: string | null;
+  finding_count: number;
+};
+
+export type StepDetail = StepSummary & {
+  findings: Finding[];
+  details: Record<string, unknown>;
+  error: string | null;
+  attempts: number;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type SellerDataset = {
+  id: string;
+  title: string;
+  filename: string;
+  status: DatasetStatus;
+  sha256: string;
+  size_bytes: number;
+  row_count: number;
+  created_at: string;
+  steps: StepSummary[];
+};
+
+export type ColumnProfile = {
+  name: string;
+  type: string;
+  null_count: number;
+  null_pct: number;
+  distinct: number;
+  min?: number | string;
+  max?: number | string;
+  mean?: number;
+  min_length?: number;
+  max_length?: number;
+};
+
+export type SellerDatasetDetail = Omit<SellerDataset, "steps"> & {
+  steps: StepDetail[];
+  columns: Column[];
+  provenance: {
+    source: string;
+    method: string;
+    collected_at: string;
+    rights_confirmed: boolean;
+    rights_confirmed_at: string;
+    rights_statement?: string;
+  };
+  seller: { name: string };
+};
+
 // Mirrors the public activity schema in apps/api/sliver_api/activity/public.py.
 
 export type ActivityType =

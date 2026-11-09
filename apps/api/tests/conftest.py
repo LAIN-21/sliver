@@ -80,7 +80,10 @@ def clean_tables(database_url):
     try:
         with engine.begin() as connection:
             connection.execute(
-                text("TRUNCATE activity_events, payments, search_events, resources, datasets, users CASCADE")
+                text(
+                    "TRUNCATE activity_events, pipeline_steps, auth_sessions, payments, search_events, "
+                    "resources, datasets, users CASCADE"
+                )
             )
     finally:
         engine.dispose()
@@ -100,3 +103,23 @@ def store() -> MemoryStore:
 def client(settings, engine, store):
     with TestClient(create_app(settings, engine=engine, store=store)) as test_client:
         yield test_client
+
+
+BROWSER_ORIGIN = "http://127.0.0.1:5173"
+
+
+@pytest.fixture
+def make_client(settings, engine, store):
+    """Independent browser-like clients (own cookie jar, allowed Origin) for multi-user tests."""
+    clients = []
+
+    def build(origin: str | None = BROWSER_ORIGIN) -> TestClient:
+        test_client = TestClient(
+            create_app(settings, engine=engine, store=store), headers={"Origin": origin} if origin else {}
+        )
+        clients.append(test_client.__enter__())
+        return test_client
+
+    yield build
+    for test_client in clients:
+        test_client.__exit__(None, None, None)

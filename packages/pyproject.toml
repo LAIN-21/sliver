@@ -1,0 +1,36 @@
+# uv workspace for the buyer-side packages (one lockfile). Not a package itself.
+[project]
+name = "sliver-packages"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2,<10",
+    "ruff>=0.17.4,<0.18",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["sliver-x402", "sliver-mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["sliver-x402/tests", "sliver-mcp/tests"]
+addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+cache-dir = "/tmp/ruff-cache"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/**" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sliver_x402", "sliver_mcp", "conftest"]

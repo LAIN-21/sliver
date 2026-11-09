@@ -1,7 +1,7 @@
 """Activity events: the public, append-only log behind the live feed and purchase timelines.
 
-Revision ID: 0004_activity_events
-Revises: 0003_payments
+Revision ID: 0005_activity_events
+Revises: 0004_seller_pipeline
 """
 
 from collections.abc import Sequence
@@ -9,8 +9,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0004_activity_events"
-down_revision: str | None = "0003_payments"
+revision: str = "0005_activity_events"
+down_revision: str | None = "0004_seller_pipeline"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

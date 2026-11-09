@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router";
 
+import { useSession } from "../session";
 import HealthBadge from "./HealthBadge";
 
 const NAV = [
@@ -9,6 +10,7 @@ const NAV = [
 ];
 
 export default function Layout() {
+  const { account, logout } = useSession();
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-line bg-white">
@@ -33,6 +35,16 @@ export default function Layout() {
               </NavLink>
             ))}
           </nav>
+          {account ? (
+            <div className="ml-auto flex items-center gap-3 text-sm">
+              <span className="text-muted">
+                {account.display_name} <span className="text-xs">({account.role})</span>
+              </span>
+              <button type="button" onClick={() => void logout()} className="font-medium text-brand hover:underline">
+                Sign out
+              </button>
+            </div>
+          ) : null}
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
