@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Request
@@ -12,17 +13,20 @@ from ..payments.x402 import drops_for
 from . import custom
 
 router = APIRouter(tags=["custom slices"])
+logger = logging.getLogger(__name__)
 
 NO_STORE = {"Cache-Control": "no-store"}
 
 
 def refusal(status: int, code: str, message: str, **extra) -> JSONResponse:
+    """A refusal in the same `{"error": {...}}` shape as the payment path."""
     return JSONResponse(
         status_code=status, content={"error": {"code": code, "message": message, **extra}}, headers=NO_STORE
     )
 
 
 def parse_where(raw: str | None) -> dict[str, str]:
+    """`where` is a JSON object of column -> value; anything else is a 422."""
     if not raw:
         return {}
     try:
@@ -58,9 +62,10 @@ def quote_custom_slice(
     store = request.app.state.store
     for attempt in range(2):
         try:
-            resource, parent, created = custom.quote(
+            quoted = custom.quote(
                 db, store, resource_id, time_start=time_start, time_end=time_end, where=parse_where(where)
             )
+            resource, parent, created = quoted.resource, quoted.parent, quoted.created
             seller = db.get(User, resource.owner_id)
             seller_name = seller.display_name if seller else ""
             breakdown = custom.price_breakdown(resource)
@@ -89,5 +94,10 @@ def quote_custom_slice(
             if attempt:
                 raise
             continue
+        for key in quoted.stale_objects:
+            try:
+                store.delete(key)
+            except Exception:  # an orphaned object is harmless; the Resource row is gone
+                logger.warning("could not delete a replaced custom slice object")
         return JSONResponse(status_code=201 if created else 200, content=body, headers=NO_STORE)
     raise AssertionError("unreachable")

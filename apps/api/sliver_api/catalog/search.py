@@ -43,7 +43,7 @@ def _listed() -> Select:
 
 
 def custom_slices_available():
-    # Only a full-dataset listing of a published dataset whose seller allows custom slices.
+    """SQL: a full-dataset listing of a published dataset whose seller allows custom slices."""
     return and_(
         is_full_dataset(),
         Resource.parent_id.is_(None),
@@ -53,6 +53,7 @@ def custom_slices_available():
 
 
 def _item(row) -> dict:
+    """One `_published()` row as the public allow-list describes it."""
     return public_resource(row[0], row[1], row[2], custom_slices=bool(row[3]))
 
 

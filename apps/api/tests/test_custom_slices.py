@@ -70,6 +70,13 @@ collected_at = "2026-11-01"
     )
 
 
+@pytest.fixture(autouse=True)
+def fresh_parent_cache():
+    custom.prepared_parents.clear()
+    yield
+    custom.prepared_parents.clear()
+
+
 @pytest.fixture
 def listed(tmp_path, sessions, store):
     """The seeded dataset: {"full": id, "September 2026": id, "October 2026": id}."""
@@ -306,6 +313,54 @@ def test_stored_custom_slices_are_capped_per_parent(listed, client, monkeypatch)
     assert second.status_code == 409 and error(second)["code"] == "custom_slice_limit"
     # Existing slices are still found.
     assert quote(client, listed["full"], **FIRST_TEN_TUAS).status_code == 200
+
+
+def age(sessions, resource_id: str, hours: float) -> None:
+    with sessions() as db:
+        db.get(Resource, resource_id).created_at = custom.utcnow() - timedelta(hours=hours)
+        db.commit()
+
+
+def test_a_full_parent_replaces_its_oldest_never_invoiced_slice(listed, client, store, sessions, monkeypatch):
+    monkeypatch.setattr(custom, "MAX_PER_PARENT", 2)
+    first = quote(client, listed["full"], **FIRST_TEN_TUAS).json()["id"]
+    second = quote(client, listed["full"], where={"terminal": "Keppel"}).json()["id"]
+    age(sessions, first, 3)
+    age(sessions, second, 2)
+    # A buyer asked to pay for the older one: an invoice protects it.
+    assert client.get(f"/api/resources/{first}/data").status_code == 402
+    with sessions() as db:
+        second_key = db.get(Resource, second).object_key
+    third = quote(client, listed["full"], where={"berth_class": "A"})
+    assert third.status_code == 201, third.text
+    with sessions() as db:
+        assert db.get(Resource, second) is None and db.get(Resource, first) is not None
+        assert {r.id for r in db.scalars(select(Resource).where(Resource.parent_id == listed["full"]))} == {
+            first,
+            third.json()["id"],
+        }
+    assert second_key not in store.objects  # the replaced object is deleted after the commit
+    # Nothing old and uninvoiced is left: recent and invoiced slices are never replaced.
+    refused = quote(client, listed["full"], where={"berth_class": "B"})
+    assert refused.status_code == 409 and error(refused)["code"] == "custom_slice_limit"
+    # The replaced filter can be quoted again later; it gets a new Resource and object.
+    age(sessions, third.json()["id"], 2)
+    again = quote(client, listed["full"], where={"terminal": "Keppel"})
+    assert again.status_code == 201 and again.json()["id"] != second
+
+
+def test_repeated_quotes_reuse_the_parsed_parent(listed, client, store, monkeypatch):
+    reads = []
+    original = store.get
+    monkeypatch.setattr(store, "get", lambda key: reads.append(key) or original(key))
+    quote(client, listed["full"], **FIRST_TEN_TUAS)
+    quote(client, listed["full"], **FIRST_TEN_TUAS)
+    quote(client, listed["full"], where={"terminal": "Keppel"})
+    assert len(reads) == 1  # one read and scan of the parent for three quotes
+    cache = custom.ParentCache(2)
+    for number in range(3):
+        cache.put((number,), custom.prepared_parents.items[next(iter(custom.prepared_parents.items))])
+    assert list(cache.items) == [(1,), (2,)]  # bounded, least recently used first out
 
 
 # --- rate limit -----------------------------------------------------------------------------

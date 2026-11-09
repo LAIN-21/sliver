@@ -18,6 +18,13 @@ and the SHA-256, never row values.
 
 Identical requests find the same Resource: its key is the SHA-256 of the parent id and the
 normalized filter, and two filters that select the same bytes share one Resource too.
+
+Each parent stores at most MAX_PER_PARENT custom slices. Quotes are anonymous, so a full parent
+replaces its oldest slice that never had an invoice and is older than REPLACE_AFTER: one client
+cannot switch the feature off for everyone, and nothing a buyer is paying for, or has bought, is
+ever removed. The parent's parsed rows, privacy flags and filter schema are cached per parent id
+and SHA-256 (the bytes are immutable and the pipeline is finished once it is published), so a
+repeated quote does not re-read and re-scan the dataset under the parent's row lock.
 """
 
 import calendar
@@ -25,14 +32,16 @@ import hashlib
 import json
 import logging
 import re
-from dataclasses import dataclass
-from datetime import date
+import threading
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import slicing, valuation
-from ..models import Dataset, PipelineStep, Resource, is_full_dataset, utcnow
+from ..models import Dataset, Payment, PipelineStep, Resource, is_full_dataset, new_id, utcnow
 from ..pipeline.leakguard import TEMPORAL, flagged_columns, is_categorical
 from ..pipeline.privacy import scan_column
 from ..pipeline.profile import profile_column
@@ -43,8 +52,12 @@ logger = logging.getLogger(__name__)
 
 # Smaller results are refused: a custom slice is a slice of a dataset, not a row lookup.
 MIN_ROWS = 5
-# Stored derived objects per parent; past this, buyers are pointed at existing slices.
+# Stored derived objects per parent. Past this, the oldest slice that never had an invoice and is
+# older than REPLACE_AFTER makes room; if there is none, buyers are pointed at existing slices.
 MAX_PER_PARENT = 50
+REPLACE_AFTER = timedelta(hours=1)
+# Parents whose parsed rows and schema are kept in memory (each holds at most a 5 MiB table).
+CACHE_SIZE = 8
 MAX_WHERE = 3
 MAX_VALUE_CHARS = 120
 SNAPSHOT_VERSION = 1
@@ -70,6 +83,7 @@ class Schema:
     where_columns: tuple[str, ...]
 
     def public(self) -> dict:
+        """What may be filtered, as shown to buyers in refusals: column names and coverage only."""
         time = (
             {"column": self.time_column, "start": self.time_start, "end": self.time_end}
             if self.time_column
@@ -86,6 +100,7 @@ class SliceFilter:
     where: tuple[tuple[str, str], ...]
 
     def to_json(self) -> dict:
+        """The normalized filter as stored on the Resource and shown publicly."""
         result: dict = {}
         if self.time_column:
             result["time"] = {
@@ -98,10 +113,12 @@ class SliceFilter:
         return result
 
     def key(self, parent_id: str) -> str:
+        """SHA-256 of the parent id and the normalized filter: the same request, the same key."""
         canonical = json.dumps({"parent": parent_id, "filter": self.to_json()}, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def label(self) -> str:
+        """A short public description, e.g. "date 2026-09-01 to 2026-09-10, terminal Tuas"."""
         parts = []
         if self.time_column:
             if self.start and self.end:
@@ -118,6 +135,7 @@ class SliceFilter:
 
 
 def build_schema(table: Table, flagged: set[str], slice_column: str | None) -> Schema:
+    """The filterable time column and category columns, by the leak guard's rules."""
     profile = [profile_column(name, table.column(index)) for index, name in enumerate(table.header)]
     # The same time column the profile stage reports, and only when it may be public.
     time = next((column for column in profile if column["type"] in TEMPORAL and "min" in column), None)
@@ -155,6 +173,7 @@ def parse_bound(value: str, *, end: bool) -> date:
 def normalize(
     schema: Schema, time_start: str | None, time_end: str | None, where: dict[str, str] | None
 ) -> SliceFilter:
+    """Validate a request against the schema; refusals name what can be filtered."""
     filterable = schema.public()
     time_start = (time_start or "").strip() or None
     time_end = (time_end or "").strip() or None
@@ -212,6 +231,7 @@ def normalize(
 
 
 def row_span(cell: str, kind: str | None) -> tuple[date, date] | None:
+    """The days a time cell covers (one day, or a whole month), or None when unreadable."""
     try:
         if kind == "month":
             first = parse_bound(cell[:7], end=False)
@@ -256,6 +276,7 @@ def privacy_flagged(db: Session, dataset_id: str, table: Table) -> set[str]:
 
 
 def slice_column(siblings: list[Resource]) -> str | None:
+    """The category column the seller's slivers were cut by, if any (not a month period)."""
     for sibling in siblings:
         if sibling.slice_filter and sibling.slice_filter.get("period") != "month":
             return sibling.slice_filter.get("column")
@@ -263,6 +284,7 @@ def slice_column(siblings: list[Resource]) -> str | None:
 
 
 def read_parent(store: ObjectStore, parent: Resource) -> Table:
+    """The parent's stored rows, refused unless the bytes still match its SHA-256."""
     try:
         data = store.get(parent.object_key)
     except Exception:
@@ -272,6 +294,82 @@ def read_parent(store: ObjectStore, parent: Resource) -> Table:
         logger.error("integrity check failed for resource %s", parent.id)
         raise Refused(503, "integrity_check_failed", "The stored data failed its integrity check.")
     return read_table(data)
+
+
+@dataclass(frozen=True)
+class Prepared:
+    table: Table
+    flagged: frozenset[str]
+    schema: Schema
+
+
+class ParentCache:
+    """A small, thread-safe LRU of `Prepared` parents."""
+
+    def __init__(self, size: int):
+        self.size = size
+        self.items: OrderedDict[tuple, Prepared] = OrderedDict()
+        self.lock = threading.Lock()
+
+    def get(self, key: tuple) -> Prepared | None:
+        with self.lock:
+            found = self.items.get(key)
+            if found is not None:
+                self.items.move_to_end(key)
+            return found
+
+    def put(self, key: tuple, value: Prepared) -> None:
+        with self.lock:
+            self.items[key] = value
+            self.items.move_to_end(key)
+            while len(self.items) > self.size:
+                self.items.popitem(last=False)
+
+    def clear(self) -> None:
+        with self.lock:
+            self.items.clear()
+
+
+prepared_parents = ParentCache(CACHE_SIZE)
+
+
+def prepare(db: Session, store: ObjectStore, parent: Resource, siblings: list[Resource]) -> Prepared:
+    """The parent's rows, privacy flags and schema, from the cache when the same bytes were seen."""
+    column = slice_column(siblings)
+    key = (parent.id, parent.sha256, column)
+    found = prepared_parents.get(key)
+    if found is not None:
+        return found
+    table = read_parent(store, parent)
+    flagged = privacy_flagged(db, parent.dataset_id, table)
+    found = Prepared(table, frozenset(flagged), build_schema(table, flagged, column))
+    prepared_parents.put(key, found)
+    return found
+
+
+def replaceable(db: Session, parent_id: str) -> Resource | None:
+    """The oldest custom slice of this parent that never had an invoice and is old enough to go."""
+    invoiced = select(Payment.id).where(Payment.resource_id == Resource.id).exists()
+    return db.scalar(
+        select(Resource)
+        .where(
+            Resource.parent_id == parent_id,
+            Resource.created_at < utcnow() - REPLACE_AFTER,
+            ~invoiced,
+        )
+        .order_by(Resource.created_at, Resource.id)
+        .limit(1)
+        .with_for_update()
+    )
+
+
+@dataclass
+class Quoted:
+    resource: Resource
+    parent: Resource
+    created: bool
+    # Objects of replaced slices: delete them only after the commit, so a failed commit loses nothing.
+    stale_objects: list[str] = field(default_factory=list)
 
 
 def checked_parent(db: Session, resource_id: str) -> tuple[Resource, Dataset]:
@@ -317,8 +415,9 @@ def quote(
     time_start: str | None = None,
     time_end: str | None = None,
     where: dict[str, str] | None = None,
-) -> tuple[Resource, Resource, bool]:
-    """(custom slice, parent, created). Raises `Refused`; the caller rolls back."""
+) -> Quoted:
+    """The custom slice for this request, cut and stored if new. Raises `Refused`; the caller
+    rolls back. After committing, the caller deletes `stale_objects` (best effort)."""
     parent, dataset = checked_parent(db, resource_id)
     siblings = list(
         db.scalars(
@@ -329,15 +428,14 @@ def quote(
             )
         )
     )
-    table = read_parent(store, parent)
-    flagged = privacy_flagged(db, dataset.id, table)
-    schema = build_schema(table, flagged, slice_column(siblings))
+    prepared = prepare(db, store, parent, siblings)
+    table, schema = prepared.table, prepared.schema
     chosen = normalize(schema, time_start, time_end, where)
 
     key = chosen.key(parent.id)
     existing = db.scalar(select(Resource).where(Resource.custom_key == key))
     if existing is not None:
-        return existing, parent, False
+        return Quoted(existing, parent, False)
 
     rows = cut(table, schema, chosen)
     if len(rows) < MIN_ROWS:
@@ -358,15 +456,22 @@ def quote(
             )
     same_bytes = db.scalar(select(Resource).where(Resource.parent_id == parent.id, Resource.sha256 == sha256))
     if same_bytes is not None:
-        return same_bytes, parent, False
+        return Quoted(same_bytes, parent, False)
+    stale: list[str] = []
     stored = db.scalar(select(func.count()).select_from(Resource).where(Resource.parent_id == parent.id)) or 0
     if stored >= MAX_PER_PARENT:
-        raise Refused(
-            409,
-            "custom_slice_limit",
-            f"This dataset already has {MAX_PER_PARENT} custom slices; "
-            "buy an existing sliver or the full dataset.",
-        )
+        victim = replaceable(db, parent.id)
+        if victim is None:
+            raise Refused(
+                409,
+                "custom_slice_limit",
+                f"This dataset already has {MAX_PER_PARENT} recent or purchased custom slices; "
+                "buy an existing sliver or the full dataset, or try again later.",
+            )
+        logger.info("replacing unsold custom slice %s of %s", victim.id, parent.id)
+        stale.append(victim.object_key)
+        db.delete(victim)
+        db.flush()
 
     price = valuation.custom_slice_price(parent.price_minor, parent.row_count, len(rows))
     snapshot = parent.valuation or {}
@@ -377,10 +482,13 @@ def quote(
     if len(chosen.where) == 1:
         coverage["slice"] = {"column": chosen.where[0][0], "value": chosen.where[0][1]}
     label = chosen.label()
-    object_key = f"resources/{dataset.owner_id}/{dataset.id}/custom/{key}.csv"
+    # One object per Resource: deleting a replaced slice's object never touches a newer one.
+    resource_id = new_id()
+    object_key = f"resources/{dataset.owner_id}/{dataset.id}/custom/{resource_id}.csv"
     slicing.store_object(store, object_key, body)
     now = utcnow()
     resource = Resource(
+        id=resource_id,
         dataset_id=dataset.id,
         owner_id=dataset.owner_id,
         parent_id=parent.id,
@@ -410,8 +518,9 @@ def quote(
     )
     db.add(resource)
     db.flush()
-    return resource, parent, True
+    return Quoted(resource, parent, True, stale)
 
 
 def price_breakdown(resource: Resource) -> dict:
+    """The private price breakdown kept on the Resource (public fields are picked in public.py)."""
     return dict((resource.valuation or {}).get("custom_slice") or {})

@@ -390,6 +390,7 @@ def price_all(db: Session, dataset: Dataset, resources: list[Resource]):
 
 
 def custom_slices_view(db: Session, dataset: Dataset) -> dict:
+    """Whether buyers may cut custom slices of this dataset, and how many they have cut."""
     count = db.scalar(
         select(func.count())
         .select_from(Resource)
