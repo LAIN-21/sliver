@@ -26,7 +26,11 @@ Use it honestly:
    suggest looking elsewhere. Do not buy a near miss.
 3. Only call sliver_buy with a budget your human gave you. Never exceed it and never invent one.
    If the best fit costs more than the budget, ask your human before doing anything else.
-4. After buying, report the file path, the SHA-256 check, the transaction hash and explorer link.
+4. Pass sliver_buy a short, honest reason: your human's actual need in plain words, for example
+   "Weekly SGSIN-CNSHA spot rates since September to quote a shipment". Sliver shows it publicly
+   on the purchase timeline, so never include wallet data, seeds, budgets or your human's private
+   details.
+5. After buying, report the file path, the SHA-256 check, the transaction hash and explorer link.
 Testnet only: no real money moves.
 """
 
@@ -143,16 +147,25 @@ def build_server(config: Config, *, api: SliverApi | None = None, buyer: Buyer |
             return refusal(error)
 
     @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
-    def sliver_buy(resource_id: str, budget_usd: float | None = None, output_dir: str | None = None) -> dict:
+    def sliver_buy(
+        resource_id: str,
+        budget_usd: float | None = None,
+        output_dir: str | None = None,
+        reason: str | None = None,
+    ) -> dict:
         """Buy one sliver with x402 on XRPL Testnet, paying the seller directly from the buyer wallet.
 
         budget_usd is required: the most your human allowed for this purchase. Refused when there
         is no budget, the price exceeds it or a local cap, the 402 challenge differs from the
         listing, the network is not Testnet, or another purchase is in flight. Saves the CSV
         (default ~/.sliver/data), checks its SHA-256, returns the transaction hash and explorer link.
+
+        reason: a short, honest statement of why your human needs this data (at most 200
+        characters), sent to Sliver and shown publicly on the purchase timeline. Never include
+        wallet data, seeds, budgets or your human's private details.
         """
         try:
-            return buyer.buy(resource_id, budget_usd, output_dir)
+            return buyer.buy(resource_id, budget_usd, output_dir, reason)
         except (Refused, WalletMissing, ValueError) as error:
             return refusal(error)
 

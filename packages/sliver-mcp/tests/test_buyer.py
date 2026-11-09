@@ -6,7 +6,7 @@ import httpx
 import pytest
 from xrpl.wallet import Wallet
 
-from sliver_mcp.buyer import Refused
+from sliver_mcp.buyer import Refused, agent_note
 from sliver_mcp.store import iso, now
 
 CHEAP = "11111111-1111-4111-8111-111111111111"  # $1.50, delivers bytes matching its SHA-256
@@ -177,3 +177,45 @@ def test_a_non_object_error_after_payment_is_recorded_as_failed(buyer, stub):
     assert "http_error" in caught.value.message
     assert buyer.store.purchases()[0]["status"] == "failed"
     assert buyer.store.spent_minor() == 150
+
+
+def notes(stub) -> list[tuple[bool, str | None]]:
+    """(paid?, X-Sliver-Agent-Note decoded from UTF-8) for every request to the data endpoint."""
+    sent = []
+    for request in stub.data_requests:
+        raw = [value for key, value in request.headers.raw if key.lower() == b"x-sliver-agent-note"]
+        sent.append(("PAYMENT-SIGNATURE" in request.headers, raw[0].decode("utf-8") if raw else None))
+    return sent
+
+
+def test_the_reason_is_sent_as_the_agent_note_on_the_challenge_and_the_payment(buyer, stub):
+    reason = "Weekly SGSIN-CNSHA spot rates since September to quote a shipment"
+    assert buyer.buy(CHEAP, budget_usd=5, reason=reason)["status"] == "delivered"
+    assert notes(stub) == [(False, reason), (True, reason)]
+
+
+def test_the_agent_note_rides_on_every_paid_retry(buyer, stub):
+    stub.pending_responses = 2
+    buyer.buy(CHEAP, budget_usd=5, reason="Port congestion check")
+    assert notes(stub) == [(False, "Port congestion check")] + [(True, "Port congestion check")] * 3
+
+
+def test_no_reason_means_no_agent_note_header(buyer, stub):
+    buyer.buy(CHEAP, budget_usd=5)
+    buyer.buy(CHEAP, budget_usd=5, reason=" \n\t ")
+    assert notes(stub) == [(False, None), (True, None)] * 2
+
+
+def test_the_agent_note_is_trimmed_to_200_characters_and_single_spaced(buyer, stub):
+    reason = "  Rates\tfor a\r\nquote \u202e\x00" + "é" * 300
+    buyer.buy(CHEAP, budget_usd=5, reason=reason)
+    expected = ("Rates for a quote " + "é" * 300)[:200]
+    assert notes(stub) == [(False, expected), (True, expected)]
+    assert len(expected) == 200
+
+
+def test_agent_note_cleaning():
+    assert agent_note(None) is None and agent_note("") is None and agent_note("\u200b\x07 ") is None
+    assert agent_note(" a \n b ") == "a b"
+    assert agent_note("x" * 250) == "x" * 200
+    assert agent_note("Données de fret 🚢") == "Données de fret 🚢"
