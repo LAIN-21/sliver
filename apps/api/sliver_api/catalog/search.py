@@ -4,10 +4,10 @@ import re
 from dataclasses import dataclass, field
 from datetime import timedelta
 
-from sqlalchemy import Select, Text, case, func, select
+from sqlalchemy import Select, Text, and_, case, func, select
 from sqlalchemy.orm import Session
 
-from ..models import Dataset, Resource, SearchEvent, User, utcnow
+from ..models import Dataset, Resource, SearchEvent, User, is_full_dataset, utcnow
 from .public import public_resource
 
 MAX_PAGE_SIZE = 50
@@ -28,12 +28,32 @@ def normalize(text: str) -> str:
 
 
 def _published() -> Select:
+    """Published Resources by id, custom slices included (a buyer must be able to inspect one)."""
     return (
-        select(Resource, User.display_name, Dataset.provenance)
+        select(Resource, User.display_name, Dataset.provenance, custom_slices_available())
         .join(User, Resource.owner_id == User.id)
         .join(Dataset, Resource.dataset_id == Dataset.id)
         .where(Resource.status == "published")
     )
+
+
+def _listed() -> Select:
+    """What discovery lists: custom slices (#39) are unlisted, reachable only by id."""
+    return _published().where(Resource.parent_id.is_(None))
+
+
+def custom_slices_available():
+    # Only a full-dataset listing of a published dataset whose seller allows custom slices.
+    return and_(
+        is_full_dataset(),
+        Resource.parent_id.is_(None),
+        Dataset.status == "published",
+        Dataset.allow_custom_slices.is_(True),
+    ).label("custom_slices")
+
+
+def _item(row) -> dict:
+    return public_resource(row[0], row[1], row[2], custom_slices=bool(row[3]))
 
 
 def _any_term(q: str):
@@ -42,12 +62,12 @@ def _any_term(q: str):
 
 
 def count_text_matches(db: Session, q: str) -> int:
-    statement = _published().where(Resource.search_vector.op("@@")(_any_term(q)))
+    statement = _listed().where(Resource.search_vector.op("@@")(_any_term(q)))
     return db.scalar(select(func.count()).select_from(statement.subquery())) or 0
 
 
 def search_catalog(db: Session, query: CatalogQuery) -> dict:
-    statement = _published()
+    statement = _listed()
     rank = None
     if query.q.strip():
         any_term = _any_term(query.q)
@@ -70,10 +90,9 @@ def search_catalog(db: Session, query: CatalogQuery) -> dict:
 
     items, top_score = [], 0.0
     for row in rows:
-        resource, seller_name, provenance = row[0], row[1], row[2]
-        item = public_resource(resource, seller_name, provenance)
+        item = _item(row)
         if rank is not None:
-            item["relevance"] = round(float(row[3]), 4)
+            item["relevance"] = round(float(row[4]), 4)
             top_score = max(top_score, item["relevance"])
         items.append(item)
 
@@ -110,13 +129,13 @@ def record_search(db: Session, query: CatalogQuery, result_count: int, top_score
 
 def get_published(db: Session, resource_id: str) -> dict | None:
     row = db.execute(_published().where(Resource.id == resource_id)).first()
-    return public_resource(row[0], row[1], row[2]) if row else None
+    return _item(row) if row else None
 
 
 def list_categories(db: Session) -> list[dict]:
     rows = db.execute(
         select(Resource.category, func.count())
-        .where(Resource.status == "published")
+        .where(Resource.status == "published", Resource.parent_id.is_(None))
         .group_by(Resource.category)
         .order_by(Resource.category)
     ).all()

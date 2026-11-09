@@ -220,6 +220,7 @@ def dataset_detail(
         columns=dataset.columns,
         provenance=dataset.provenance,
         seller={"name": owner.display_name},
+        allow_custom_slices=dataset.allow_custom_slices,
         resources=[private_resource(resource) for resource in resources],
         review=review_view(dataset, reviewer),
     )

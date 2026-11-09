@@ -64,10 +64,14 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
             row_count=len(rows),
             columns=describe(header, rows),
             provenance=spec["provenance"],
-            status="accepted",
+            status="published",
         )
         db.add(dataset)
         db.flush()
+    elif dataset.status == "accepted":
+        # Seeded slivers are published at seed time, so the dataset is published too (older seeds
+        # left it "accepted"); custom slices (#39) are offered only on published datasets.
+        dataset.status = "published"
 
     column = spec.get("slice_by")
     period = spec.get("slice_period")

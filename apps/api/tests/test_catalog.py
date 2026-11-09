@@ -24,6 +24,8 @@ PUBLIC_KEYS = {
     "content",
     "sample_rows",
     "published_at",
+    "derived_from",
+    "custom_slices",
 }
 
 

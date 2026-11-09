@@ -32,7 +32,7 @@ def insights(db: Session, seller: User) -> dict:
     ).all()
     delivered = (Payment.status == "delivered", Resource.owner_id == seller.id)
     rows = db.execute(
-        select(Payment, Resource.title)
+        select(Payment, Resource.title, Resource.parent_id)
         .join(Resource, Payment.resource_id == Resource.id)
         .where(*delivered)
         .order_by(Payment.settled_at.desc().nulls_last(), Payment.id)
@@ -59,7 +59,8 @@ def insights(db: Session, seller: User) -> dict:
         matches = [
             {"id": resource.id, "title": resource.title, "status": resource.status}
             for resource in resources
-            if valuation.matching_demand(listing_text(resource), [item])
+            if resource.parent_id is None  # custom slices answer one buyer, not open demand
+            and valuation.matching_demand(listing_text(resource), [item])
         ]
         demand.append({**item, "matches": matches[:MAX_MATCHES]})
 
@@ -74,7 +75,8 @@ def insights(db: Session, seller: User) -> dict:
             "items": [
                 {
                     "payment_id": payment.id,
-                    "resource": {"id": payment.resource_id, "title": title},
+                    # A buyer-defined custom slice (#39) names the listing it was cut from.
+                    "resource": {"id": payment.resource_id, "title": title, "custom_slice_of": parent_id},
                     "amount": {
                         "value": payment.amount,
                         "asset": payment.asset,
@@ -89,7 +91,7 @@ def insights(db: Session, seller: User) -> dict:
                         "explorer_url": explorer_url(payment.tx_hash),
                     },
                 }
-                for payment, title in rows
+                for payment, title, parent_id in rows
             ],
         },
         "demand": {"days": DEMAND_DAYS, "items": demand},
