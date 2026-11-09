@@ -1,0 +1,23 @@
+[project]
+name = "sliver-mcp"
+version = "0.1.0"
+description = "Open-source MCP server to search, evaluate and buy Sliver data with x402 on XRPL Testnet"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+    "sliver-x402",
+    "mcp>=2.3,<3",
+    "httpx>=0.28.1,<1",
+    "xrpl-py>=5.2,<6",
+]
+
+[project.scripts]
+sliver-mcp = "sliver_mcp.cli:main"
+
+[tool.uv.sources]
+sliver-x402 = { workspace = true }
+
+[build-system]
+requires = ["uv_build>=0.9.17,<0.10"]
+build-backend = "uv_build"

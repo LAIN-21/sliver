@@ -1,0 +1,188 @@
+"""The Sliver buyer MCP server (stdio). The buyer's own tool: it runs on the buyer's machine,
+signs with the buyer's key, and spends only within the budget the buyer's human sets."""
+
+from datetime import date
+from typing import Any
+
+from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
+
+from .api import ApiError, SliverApi
+from .buyer import Buyer, Refused, XrplSigner, check_resource_id
+from .config import Config, drops_for, usd_to_minor
+from .evaluate import evaluate
+from .store import Store
+from .wallet import WalletMissing, balance_drops, load_wallet
+
+INSTRUCTIONS = """\
+Sliver is a marketplace of small, verifiable data slices ("slivers") sold per purchase with x402
+on the XRP Ledger Testnet. This server is the buyer's own tool: it signs payments locally with the
+buyer's wallet, and every spending decision belongs to you and your human.
+
+Use it honestly:
+1. Search with sliver_search, then call sliver_evaluate with the human's actual need (required
+   columns, time range, budget) before buying anything.
+2. If the recommendation is look_elsewhere, say plainly that Sliver does not have this data and
+   suggest looking elsewhere. Do not buy a near miss.
+3. Only call sliver_buy with a budget your human gave you. Never exceed it and never invent one.
+   If the best fit costs more than the budget, ask your human before doing anything else.
+4. After buying, report the file path, the SHA-256 check, the transaction hash and explorer link.
+Testnet only: no real money moves.
+"""
+
+
+def money(minor: int) -> float:
+    return minor / 100
+
+
+def summary(listing: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": listing.get("id"),
+        "title": listing.get("title"),
+        "category": listing.get("category"),
+        "price_usd": money((listing.get("price") or {}).get("amount_minor") or 0),
+        "columns": [column.get("name") for column in listing.get("columns") or []],
+        "rows": listing.get("row_count"),
+        "coverage": listing.get("coverage"),
+        "seller": (listing.get("seller") or {}).get("name"),
+    }
+
+
+def refusal(error: Exception) -> dict[str, Any]:
+    if isinstance(error, Refused) and error.paid:
+        return {"status": "paid_not_completed", "code": error.code, "message": error.message, **error.paid}
+    if isinstance(error, Refused):
+        return {"status": "refused", "code": error.code, "message": error.message, "spent": 0}
+    return {"status": "error", "message": str(error), "hint": "Check sliver_purchases before retrying."}
+
+
+def build_server(config: Config, *, api: SliverApi | None = None, buyer: Buyer | None = None) -> MCPServer:
+    api = api or SliverApi(config.api_url)
+    store = Store(config.home)
+
+    def signer():
+        return XrplSigner(load_wallet(store), config.rpc_url, config.max_fee_drops)
+
+    buyer = buyer or Buyer(config, api, store, signer)
+    server = MCPServer("sliver", instructions=INSTRUCTIONS, version="0.1.0")
+    read_only = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
+
+    @server.tool(annotations=read_only)
+    def sliver_search(
+        query: str = "",
+        category: str | None = None,
+        max_price_usd: float | None = None,
+        columns: list[str] | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Search Sliver's catalog of data slivers. Returns public metadata only, never data."""
+        try:
+            found = api.search(
+                q=query,
+                category=category,
+                max_price_minor=usd_to_minor(max_price_usd, "max_price_usd") if max_price_usd else None,
+                columns=",".join(columns or []) or None,
+                limit=max(1, min(limit, 50)),
+            )
+        except (ApiError, ValueError) as error:
+            return refusal(error)
+        return {"total": found.get("total"), "items": [summary(item) for item in found.get("items", [])]}
+
+    @server.tool(annotations=read_only)
+    def sliver_inspect(resource_id: str) -> dict[str, Any]:
+        """Full public listing of one sliver: columns, coverage, provenance, price, SHA-256."""
+        try:
+            listing = api.listing(check_resource_id(resource_id))
+        except (ApiError, Refused) as error:
+            return refusal(error)
+        price_minor = (listing.get("price") or {}).get("amount_minor") or 0
+        return {
+            **listing,
+            "expected_payment": {
+                "network": "xrpl:1",
+                "asset": "XRP",
+                "amount_drops": str(drops_for(price_minor, config.drops_per_usd)),
+                "drops_per_usd": config.drops_per_usd,
+            },
+        }
+
+    @server.tool(annotations=read_only)
+    def sliver_evaluate(
+        need: str,
+        required_columns: list[str] | None = None,
+        required_terms: list[str] | None = None,
+        time_start: str | None = None,
+        time_end: str | None = None,
+        max_age_days: int | None = None,
+        budget_usd: float | None = None,
+        resource_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Deterministic fit report for a need: buy, skip or look_elsewhere, with reasons. Never spends.
+
+        need: the human's information need in plain words. required_columns / required_terms must
+        all appear in a listing's metadata. time_start / time_end: YYYY, YYYY-MM or YYYY-MM-DD.
+        resource_ids: evaluate these listings instead of searching for the need.
+        """
+        try:
+            if resource_ids:
+                listings = [api.listing(check_resource_id(rid)) for rid in resource_ids[:20]]
+            else:
+                listings = api.search(q=need, limit=20).get("items", [])
+            return evaluate(
+                listings,
+                need=need,
+                today=date.today(),
+                required_columns=required_columns or [],
+                required_terms=required_terms or [],
+                time_start=time_start,
+                time_end=time_end,
+                max_age_days=max_age_days,
+                budget_minor=None if budget_usd is None else usd_to_minor(budget_usd, "budget_usd"),
+            )
+        except (ApiError, Refused, ValueError) as error:
+            return refusal(error)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True))
+    def sliver_buy(resource_id: str, budget_usd: float | None = None, output_dir: str | None = None) -> dict:
+        """Buy one sliver with x402 on XRPL Testnet, paying the seller directly from the buyer wallet.
+
+        budget_usd is required: the most your human allowed for this purchase. Refused when there
+        is no budget, the price exceeds it or a local cap, the 402 challenge differs from the
+        listing, the network is not Testnet, or another purchase is in flight. Saves the CSV
+        (default ~/.sliver/data), checks its SHA-256, returns the transaction hash and explorer link.
+        """
+        try:
+            return buyer.buy(resource_id, budget_usd, output_dir)
+        except (Refused, WalletMissing, ValueError) as error:
+            return refusal(error)
+
+    @server.tool(annotations=read_only)
+    def sliver_wallet() -> dict[str, Any]:
+        """The buyer wallet's address, Testnet balance and spend in the last 24 hours (never the seed)."""
+        spent = store.spent_minor()
+        result: dict[str, Any] = {
+            "network": "xrpl:1",
+            "spent_last_24h_usd": money(spent),
+            "daily_cap_usd": money(config.daily_cap_minor),
+            "remaining_today_usd": money(max(config.daily_cap_minor - spent, 0)),
+            "max_per_purchase_usd": money(config.max_purchase_minor),
+        }
+        try:
+            wallet = load_wallet(store)
+        except WalletMissing as error:
+            return {**result, "address": None, "message": str(error)}
+        drops = balance_drops(wallet.address, config.rpc_url)
+        return {
+            **result,
+            "address": wallet.address,
+            "balance_xrp": None if drops is None else drops / 1_000_000,
+            "explorer_url": f"https://testnet.xrpl.org/accounts/{wallet.address}",
+        }
+
+    @server.tool(annotations=read_only)
+    def sliver_purchases(limit: int = 20) -> dict[str, Any]:
+        """Purchases made from this machine, newest first, with files, hashes and transactions."""
+        records = sorted(store.purchases(), key=lambda item: item["created_at"], reverse=True)
+        return {"items": records[: max(1, min(limit, 200))], "spent_last_24h_usd": money(store.spent_minor())}
+
+    return server
