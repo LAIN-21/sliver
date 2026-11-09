@@ -47,11 +47,16 @@ def activity(
     limit: Annotated[int, Query(ge=1, le=MAX_EVENTS)] = 50,
     event_type: Annotated[str | None, Query(alias="type", pattern=TYPE_PATTERN)] = None,
 ) -> dict:
-    """Most recent events first. `cursor` is the stream position to continue live from."""
+    """Most recent events first. `cursor` is the stream position to continue live from.
+
+    The cursor is read before the items, so an event committed in between shows up twice (the
+    client drops it by id) rather than never.
+    """
+    cursor = latest_id(db)
     query = events_query().order_by(ActivityEvent.id.desc()).limit(limit)
     if event_type:
         query = query.where(ActivityEvent.type == event_type)
-    return {"items": [public_event(*row) for row in db.execute(query)], "cursor": latest_id(db)}
+    return {"items": [public_event(*row) for row in db.execute(query)], "cursor": cursor}
 
 
 @router.get("/purchases/{payment_id}")

@@ -17,35 +17,42 @@ export default function PurchasePage() {
   const initial = useRef<Set<number> | null>(null);
   const [streamFrom, setStreamFrom] = useState<number | null>(null);
 
-  const load = useCallback(
-    (signal?: AbortSignal) =>
-      getPurchase(id, signal)
-        .then((purchase) => {
-          initial.current ??= new Set(purchase.events.map((event) => event.id));
-          setStreamFrom((current) => current ?? purchase.events[purchase.events.length - 1].id);
-          setState({ kind: "ready", purchase });
-        })
-        .catch((error: unknown) => {
-          if (error instanceof DOMException && error.name === "AbortError") return;
-          setState((current) =>
-            current.kind === "ready" ? current : error instanceof ApiError && error.status === 404 ? { kind: "missing" } : { kind: "error" },
-          );
-        }),
-    [id],
-  );
+  // Only the newest request may update the page: each load aborts the one before it, so a slow,
+  // older response (or one for the previous route id) can never overwrite newer data.
+  const inflight = useRef<AbortController | null>(null);
+
+  const load = useCallback(() => {
+    inflight.current?.abort();
+    const controller = new AbortController();
+    inflight.current = controller;
+    return getPurchase(id, controller.signal)
+      .then((purchase) => {
+        if (controller.signal.aborted) return;
+        initial.current ??= new Set(purchase.events.map((event) => event.id));
+        setStreamFrom((current) => current ?? purchase.events[purchase.events.length - 1].id);
+        setState({ kind: "ready", purchase });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState((current) =>
+          current.kind === "ready" ? current : error instanceof ApiError && error.status === 404 ? { kind: "missing" } : { kind: "error" },
+        );
+      });
+  }, [id]);
 
   useEffect(() => {
-    const controller = new AbortController();
     initial.current = null;
     setStreamFrom(null);
     setState({ kind: "loading" });
-    void load(controller.signal);
-    return () => controller.abort();
+    void load();
+    return () => inflight.current?.abort();
   }, [load]);
 
-  // The server's view (status, summary) is authoritative, so refetch on each new step.
-  const stream = useActivityStream(streamFrom, () => void load(), id);
   const purchase = state.kind === "ready" ? state.purchase : null;
+  const finished = purchase !== null && ["delivered", "failed", "expired"].includes(purchase.status);
+  // The server's view (status, summary) is authoritative, so refetch on each new step. A finished
+  // purchase has nothing left to follow, so its stream closes (a reload shows any later replay).
+  const stream = useActivityStream(finished ? null : streamFrom, () => void load(), id);
 
   if (state.kind === "loading") return <p className="text-muted">Loading purchase…</p>;
   if (state.kind === "missing") return <Back message="No purchase with this id." />;
@@ -53,7 +60,6 @@ export default function PurchasePage() {
 
   const { events } = purchase;
   const status = statusFor(purchase.status, events);
-  const finished = ["delivered", "failed", "expired"].includes(purchase.status);
   const reached = Math.max(...events.map((event) => stepIndex(event.type)));
   const upcoming = finished || status.tone === "bad" ? [] : STEPS.slice(reached + 1);
   const signed = events.find((event) => event.type === "signature_received");
