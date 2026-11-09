@@ -16,11 +16,12 @@ type State =
   | { kind: "ready"; dataset: SellerDatasetDetail };
 
 export default function DatasetPage() {
-  return <RequireAccount>{() => <DatasetView />}</RequireAccount>;
+  const { id = "" } = useParams();
+  // Keyed by id so following a link to another dataset (duplicate findings) starts fresh.
+  return <RequireAccount>{() => <DatasetView key={id} id={id} />}</RequireAccount>;
 }
 
-function DatasetView() {
-  const { id = "" } = useParams();
+function DatasetView({ id }: { id: string }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const live = state.kind === "loading" || (state.kind === "ready" && inProgress(state.dataset.status, state.dataset.steps));
 

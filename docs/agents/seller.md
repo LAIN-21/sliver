@@ -21,7 +21,7 @@ Additional constraints for seller accounts, uploads and the inspection pipeline 
 
 - Sellers see only their own datasets. Reviewers see only datasets that reached review (`REVIEW_STATUSES`). Everyone else gets 401, and datasets outside an account's view answer 404, never 403, so ids cannot be probed.
 - Uploads, findings, profiles and provenance are private. Nothing here may reach public discovery; publication goes through Resources and `catalog/public.py` only.
-- Duplicate findings may name the seller's own datasets or a published listing title, never another seller's private upload. Compare near duplicates only against the seller's own datasets and datasets with a published Resource.
+- Duplicate findings may name the seller's own datasets or a published listing title, never another seller's private upload. Compare exact and near duplicates only against the seller's own datasets and datasets with a published Resource, so a private upload can neither be probed for nor block its owner's later upload.
 
 ## Pipeline
 

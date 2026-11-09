@@ -1,7 +1,7 @@
 """Stage 4: exact duplicates (same SHA-256) and near duplicates of data already on Sliver.
 
-Near duplicates are compared only against the seller's own datasets and datasets with a
-published Resource, so another seller's private upload is never revealed through a finding.
+Both are compared only against the seller's own datasets and datasets with a published
+Resource, so another seller's private upload is never revealed through a finding.
 """
 
 import hashlib
@@ -65,9 +65,7 @@ def overlap(upload: Table, other: Table) -> float:
 def describe(context: StageContext, other: Dataset, published_title: str | None) -> str:
     if other.owner_id == context.dataset.owner_id:
         return f"your dataset “{other.title}”"
-    if published_title:
-        return f"the published catalog listing “{published_title}”"
-    return "a dataset already submitted to Sliver"
+    return f"the published catalog listing “{published_title}”"
 
 
 def own_link(context: StageContext, other: Dataset) -> dict:
@@ -87,7 +85,14 @@ def published_title(context: StageContext, dataset_id: str) -> str | None:
 
 def run(context: StageContext) -> StageResult:
     dataset = context.dataset
-    others = Dataset.id != dataset.id, Dataset.status != "rejected"
+    is_published = exists().where(Resource.dataset_id == Dataset.id, Resource.status == "published")
+    # Only the seller's own datasets and published ones: matching another seller's private upload
+    # would reveal that it exists and would let whoever uploads a copy first block the owner.
+    others = (
+        Dataset.id != dataset.id,
+        Dataset.status != "rejected",
+        or_(Dataset.owner_id == dataset.owner_id, is_published),
+    )
     findings = []
 
     exact = context.db.scalars(select(Dataset).where(*others, Dataset.sha256 == dataset.sha256)).all()
@@ -104,14 +109,7 @@ def run(context: StageContext) -> StageResult:
 
     table = context.table
     mine = {column_key(name) for name in table.header}
-    is_published = exists().where(Resource.dataset_id == Dataset.id, Resource.status == "published")
-    candidates = context.db.scalars(
-        select(Dataset).where(
-            *others,
-            Dataset.sha256 != dataset.sha256,
-            or_(Dataset.owner_id == dataset.owner_id, is_published),
-        )
-    ).all()
+    candidates = context.db.scalars(select(Dataset).where(*others, Dataset.sha256 != dataset.sha256)).all()
     scored = []
     for other in candidates:
         names = {column_key(column["name"]) for column in other.columns or []}

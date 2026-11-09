@@ -361,6 +361,20 @@ def test_unrelated_data_and_private_uploads_of_others_are_not_duplicates(
     assert step["status"] == "passed", step["findings"]
 
 
+def test_exact_copies_of_other_sellers_private_uploads_are_not_reported(seller, make_client, sessions, store):
+    make_user(sessions, "other@example.test")
+    other = make_client()
+    sign_in(other, "other@example.test")
+    body = b"sensor,reading\nA,1\nB,2\n"
+    upload(other, body=body, title="Other private")
+    process_available(sessions, store, TIMEOUT)
+    dataset_id = upload(seller, body=body, title="Mine").json()["id"]
+    process_available(sessions, store, TIMEOUT)
+    body = detail(seller, dataset_id)
+    assert body["steps"][3]["status"] == "passed", body["steps"][3]["findings"]
+    assert body["status"] == "review"
+
+
 def test_own_earlier_upload_is_linked_as_a_duplicate(seller, sessions, store):
     first = upload(seller).json()["id"]
     process_available(sessions, store, TIMEOUT)
