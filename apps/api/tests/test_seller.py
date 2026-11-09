@@ -37,7 +37,16 @@ def test_upload_stores_immutable_bytes_with_sha256_and_queues_every_stage(seller
     body = response.json()
     assert body["status"] == "queued"
     assert body["sha256"] == hashlib.sha256(CSV).hexdigest()
-    assert [step["stage"] for step in body["steps"]] == ["validate", "profile", "privacy", "duplicates"]
+    assert [step["stage"] for step in body["steps"]] == [
+        "validate",
+        "profile",
+        "privacy",
+        "duplicates",
+        "ai_review",
+        "research",
+        "package",
+        "decide",
+    ]
     assert {step["status"] for step in body["steps"]} == {"pending"}
     with sessions() as db:
         dataset = db.get(Dataset, body["id"])
@@ -125,7 +134,7 @@ def test_reviewers_see_only_datasets_that_reached_review(seller, make_client, se
     assert reviewer.get(f"/api/seller/datasets/{broken}").status_code == 404
     assert reviewer.get(f"/api/seller/datasets/{queued_only}").status_code == 404
     detail = reviewer.get(f"/api/seller/datasets/{clean}").json()
-    assert detail["status"] == "review" and detail["seller"] == {"name": "seller"}
+    assert detail["status"] == "accepted" and detail["seller"] == {"name": "seller"}
 
 
 def test_detail_shows_per_stage_status_and_findings(seller, sessions, store, settings):
@@ -137,11 +146,15 @@ def test_detail_shows_per_stage_status_and_findings(seller, sessions, store, set
         ("profile", "pending"),
         ("privacy", "pending"),
         ("duplicates", "pending"),
+        ("ai_review", "pending"),
+        ("research", "pending"),
+        ("package", "pending"),
+        ("decide", "pending"),
     ]
     assert detail["status"] == "inspecting"
     process_available(sessions, store, settings.pipeline_step_timeout_seconds)
     detail = seller.get(f"/api/seller/datasets/{dataset_id}").json()
-    assert detail["status"] == "review"
+    assert detail["status"] == "accepted"
     assert detail["row_count"] == 2
     assert detail["columns"] == [
         {"name": "date", "type": "date"},

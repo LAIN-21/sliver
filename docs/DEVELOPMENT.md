@@ -71,7 +71,15 @@ Public endpoints:
 
 Set `SLIVER_SELLER_PASSWORD` and `SLIVER_REVIEWER_PASSWORD` in `.env` (empty values disable sign-in), restart the stack with `make dev-start` so the containers pick them up, then run `make seed`. Sign in at http://127.0.0.1:5173/sell/login as a demo seller (`harbour-analytics@sliver.local` or `strait-line-data@sliver.local`) or as `reviewer@sliver.local`. Re-run `make seed` after changing a password.
 
-Sellers upload a UTF-8 CSV (at most 5 MiB, 10,000 rows, 100 columns) with a title, provenance (source, method, collection date) and a rights confirmation. The worker then runs validate, profile, privacy and duplicates; the dataset page polls and shows each stage's status and findings. Sellers see only their own uploads; the reviewer sees only datasets whose inspection passed.
+Sellers upload a UTF-8 CSV (at most 5 MiB, 10,000 rows, 100 columns) with a title, provenance (source, method, collection date) and a rights confirmation. The worker then runs validate, profile, privacy, duplicates, AI review, research, package and decide; the dataset page polls and shows each stage's status and findings, the proposed public listing, the packaged slivers and the acceptance decision. Datasets without blocking findings and with a quality score of at least `SLIVER_AUTO_ACCEPT_QUALITY` (70) are accepted automatically and wait for pricing (#15); the rest wait in the reviewer queue at `/sell`, where the reviewer approves or rejects each one with a reason. Sellers see only their own uploads; the reviewer sees only datasets that reached review (waiting, accepted or decided).
+
+### AI review
+
+`ANTHROPIC_API_KEY` is optional. Without it the AI review uses a deterministic offline fallback (category from column names, the seller's title, a description built from column names, counts and coverage, and a rule-chosen slice column), so the whole pipeline runs locally and in tests. With a key, Claude (`SLIVER_AI_MODEL`, default `claude-opus-5-5`) writes the listing and concerns from the column schema, the profile and at most 20 sample rows with flagged cells redacted. Results are cached in the private bucket under `ai-cache/` by prompt version, model and dataset SHA-256. Prompts are versioned files in `apps/api/sliver_api/prompts/`; change a prompt by adding a new version and pointing `ai.py` at it, so cached answers from the old prompt are not reused.
+
+`SLIVER_AI_RESEARCH=true` adds a web-search check for freely available equivalents (needs the key; off by default because every run makes several web searches). After adding or changing these variables in `.env`, restart with `make dev-start`; the API image needs a rebuild for the new `anthropic` dependency anyway. Tests never call the API: `tests/conftest.py` removes the key.
+
+For a live check, add the key, restart, and upload the four CSVs in `examples/datasets/` as a seller who does not own them (or `make dev-reset` first): each dataset page then shows "Written by Claude".
 
 Fixtures for manual checks live in `examples/seller/`:
 
@@ -84,7 +92,8 @@ Endpoints (all mutations need an allowed `Origin`, see `SLIVER_ALLOWED_ORIGINS`)
 
 - `POST /api/auth/login` (`{"email", "password"}`), `POST /api/auth/logout`, `GET /api/auth/me`.
 - `POST /api/seller/datasets`: multipart `file`, `title`, `source`, `method`, `collected_at` (ISO date), `rights_confirmed=true` and an optional `rights_statement`. Bodies over the limit get 413 before parsing.
-- `GET /api/seller/datasets` and `GET /api/seller/datasets/{id}`: datasets visible to the signed-in account, with per-stage status, findings and the column profile.
+- `GET /api/seller/datasets` and `GET /api/seller/datasets/{id}`: datasets visible to the signed-in account, with per-stage status, findings, the column profile, the packaged slivers (`resources`) and any reviewer decision (`review`).
+- `POST /api/seller/datasets/{id}/review` (reviewer only): `{"decision": "approve" | "reject", "reason": "..."}` for a dataset waiting for review. Approving accepts the dataset and returns its slivers to `draft` for pricing; rejecting marks the dataset and its slivers `rejected`. Anything not waiting for review answers 409.
 
 ## Payments (x402 on XRPL Testnet)
 

@@ -1,11 +1,21 @@
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 
-import { ApiError, getDataset } from "../api";
+import { ApiError, getDataset, reviewDataset } from "../api";
+import { ErrorMessage, Field, INPUT, PRIMARY_BUTTON } from "../components/Form";
 import { DatasetPill, inProgress, SeverityBadge, StepPill } from "../components/PipelineStatus";
 import RequireAccount from "../components/RequireAccount";
-import { formatBytes, formatRange } from "../format";
-import type { ColumnProfile, SellerDatasetDetail, StepDetail } from "../types";
+import { formatBytes, formatCategory, formatRange } from "../format";
+import type {
+  Account,
+  AiReviewDetails,
+  ColumnProfile,
+  DecisionDetails,
+  PackagedResource,
+  ResearchSource,
+  SellerDatasetDetail,
+  StepDetail,
+} from "../types";
 
 const POLL_MS = 1_500;
 
@@ -18,10 +28,10 @@ type State =
 export default function DatasetPage() {
   const { id = "" } = useParams();
   // Keyed by id so following a link to another dataset (duplicate findings) starts fresh.
-  return <RequireAccount>{() => <DatasetView key={id} id={id} />}</RequireAccount>;
+  return <RequireAccount>{(account) => <DatasetView key={id} id={id} account={account} />}</RequireAccount>;
 }
 
-function DatasetView({ id }: { id: string }) {
+function DatasetView({ id, account }: { id: string; account: Account }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const live = state.kind === "loading" || (state.kind === "ready" && inProgress(state.dataset.status, state.dataset.steps));
 
@@ -79,6 +89,14 @@ function DatasetView({ id }: { id: string }) {
         </div>
       </dl>
 
+      <Decision
+        dataset={dataset}
+        account={account}
+        onDecided={(updated) => setState({ kind: "ready", dataset: updated })}
+      />
+      <ProposedListing step={dataset.steps.find((step) => step.stage === "ai_review")} />
+      {dataset.resources.length ? <Slivers resources={dataset.resources} /> : null}
+
       <h2 className="mt-8 text-lg font-semibold">Inspection pipeline</h2>
       <ol className="mt-3 space-y-3">
         {dataset.steps.map((step, index) => (
@@ -127,6 +145,10 @@ function Step({ step, index }: { step: StepDetail; index: number }) {
         </p>
       ) : null}
       {columns?.length ? <ProfileTable columns={columns} /> : null}
+      {step.stage === "decide" && step.details.decision ? <Score details={step.details as DecisionDetails} /> : null}
+      {step.stage === "research" && Array.isArray(step.details.sources) ? (
+        <Sources sources={step.details.sources as ResearchSource[]} />
+      ) : null}
     </li>
   );
 }
@@ -183,5 +205,217 @@ function Back({ message }: { message: string }) {
         Back to datasets
       </Link>
     </div>
+  );
+}
+
+function Decision({
+  dataset,
+  account,
+  onDecided,
+}: {
+  dataset: SellerDatasetDetail;
+  account: Account;
+  onDecided: (dataset: SellerDatasetDetail) => void;
+}) {
+  if (dataset.review) {
+    const approved = dataset.review.decision === "approved";
+    return (
+      <section className={`mt-6 rounded-xl border p-5 ${approved ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+        <h2 className="font-semibold">{approved ? "Approved by a reviewer" : "Rejected by a reviewer"}</h2>
+        <p className="mt-1 text-sm [overflow-wrap:anywhere]">{dataset.review.reason}</p>
+        <p className="mt-2 text-xs text-muted">
+          {dataset.review.reviewer ?? "Reviewer"} · {new Date(dataset.review.decided_at).toLocaleString()}
+        </p>
+      </section>
+    );
+  }
+  if (dataset.status === "accepted") {
+    return (
+      <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+        <h2 className="font-semibold">Accepted automatically</h2>
+        <p className="mt-1 text-sm">No blocking findings and the quality score cleared the threshold. The slivers are ready for pricing.</p>
+      </section>
+    );
+  }
+  if (dataset.status !== "review") return null;
+  if (account.role !== "reviewer") {
+    return (
+      <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
+        <h2 className="font-semibold">Waiting for a reviewer</h2>
+        <p className="mt-1 text-sm">The acceptance decision below explains why this dataset needs a human.</p>
+      </section>
+    );
+  }
+  return <ReviewForm datasetId={dataset.id} onDecided={onDecided} />;
+}
+
+function ReviewForm({ datasetId, onDecided }: { datasetId: string; onDecided: (dataset: SellerDatasetDetail) => void }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const decision = submitter?.value === "reject" ? "reject" : "approve";
+    setBusy(true);
+    setError(null);
+    try {
+      onDecided(await reviewDataset(datasetId, decision, reason));
+    } catch (failure) {
+      setError(failure instanceof ApiError ? failure.message : "Could not record the decision.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => void submit(event)} className="mt-6 space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-5">
+      <h2 className="font-semibold">Review this dataset</h2>
+      <Field label="Reason" hint="Shown to the seller. At least 3 characters.">
+        <textarea
+          required
+          minLength={3}
+          maxLength={1000}
+          rows={3}
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          className={INPUT}
+        />
+      </Field>
+      {error ? <ErrorMessage>{error}</ErrorMessage> : null}
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" name="decision" value="approve" disabled={busy} className={PRIMARY_BUTTON}>
+          Approve
+        </button>
+        <button
+          type="submit"
+          name="decision"
+          value="reject"
+          disabled={busy}
+          className="rounded-lg border border-red-300 bg-white px-4 py-2 font-medium text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Reject
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ProposedListing({ step }: { step: StepDetail | undefined }) {
+  const details = step?.details as AiReviewDetails | undefined;
+  if (!details?.listing) return null;
+  const { listing, slice } = details;
+  const engine = details.engine === "claude" ? `Claude (${details.model ?? "model"}${details.cached ? ", cached" : ""})` : "offline fallback";
+  return (
+    <section className="mt-6 rounded-xl border border-line bg-white p-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-semibold">Proposed public listing</h2>
+        <span className="text-xs text-muted">Written by {engine}</span>
+      </div>
+      <p className="mt-3 font-medium [overflow-wrap:anywhere]">{listing.title}</p>
+      <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere]">{listing.description}</p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-full bg-brand-soft px-2 py-0.5 font-medium text-brand">{formatCategory(listing.category)}</span>
+        {listing.tags.map((tag) => (
+          <span key={tag} className="rounded-full bg-surface px-2 py-0.5 text-muted">
+            {tag}
+          </span>
+        ))}
+      </div>
+      {slice ? (
+        <p className="mt-3 text-sm">
+          Slices:{" "}
+          <span className="font-medium">
+            {slice.column ? (slice.period === "month" ? `${slice.column} by calendar month` : `one per ${slice.column}`) : "none"}
+          </span>
+          {slice.source === "rule" ? <span className="text-muted"> (chosen by Sliver's rules)</span> : null}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function Slivers({ resources }: { resources: PackagedResource[] }) {
+  return (
+    <section className="mt-6">
+      <h2 className="text-lg font-semibold">Packaged slivers ({resources.length})</h2>
+      <p className="mt-1 text-sm text-muted">
+        Each is its own immutable CSV object. They stay private drafts until pricing and publication.
+      </p>
+      <div className="mt-3 overflow-x-auto rounded-lg border border-line bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-surface text-muted">
+            <tr>
+              <th className="px-3 py-2 font-medium">Sliver</th>
+              <th className="px-3 py-2 font-medium">Rows</th>
+              <th className="px-3 py-2 font-medium">Size</th>
+              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">SHA-256</th>
+            </tr>
+          </thead>
+          <tbody>
+            {resources.map((resource) => (
+              <tr key={resource.id} className="border-t border-line">
+                <td className="px-3 py-2 [overflow-wrap:anywhere]">{resource.slice ? resource.slice.value : "Full dataset"}</td>
+                <td className="px-3 py-2 tabular-nums">{resource.row_count.toLocaleString("en-US")}</td>
+                <td className="px-3 py-2 tabular-nums">{formatBytes(resource.size_bytes)}</td>
+                <td className="px-3 py-2 text-muted">{resource.status}</td>
+                <td className="px-3 py-2 font-mono text-xs" title={resource.sha256}>
+                  {resource.sha256.slice(0, 12)}…
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function Score({ details }: { details: DecisionDetails }) {
+  return (
+    <div className="mt-3 space-y-2 text-sm">
+      <p>
+        Quality score <span className="font-medium tabular-nums">{details.quality_score}</span> (auto-accept at{" "}
+        {details.threshold})
+      </p>
+      {details.blocking.length ? (
+        <div>
+          <p className="font-medium">Needs a reviewer because:</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {details.blocking.map((item, index) => (
+              <li key={`${item.stage}-${item.code}-${index}`} className="[overflow-wrap:anywhere]">
+                {item.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {details.deductions.length ? (
+        <ul className="list-disc space-y-1 pl-5 text-muted">
+          {details.deductions.map((item, index) => (
+            <li key={`${item.stage}-${item.code}-${index}`} className="[overflow-wrap:anywhere]">
+              −{item.points}: {item.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function Sources({ sources }: { sources: ResearchSource[] }) {
+  if (!sources.length) return null;
+  return (
+    <ul className="mt-3 space-y-1 text-sm">
+      {sources.map((source) => (
+        <li key={source.url} className="[overflow-wrap:anywhere]">
+          <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-brand hover:underline">
+            {source.title || source.url}
+          </a>
+          {source.note ? <span className="text-muted"> — {source.note}</span> : null}
+        </li>
+      ))}
+    </ul>
   );
 }

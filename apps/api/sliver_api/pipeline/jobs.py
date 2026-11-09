@@ -12,7 +12,7 @@ from datetime import timedelta
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session, aliased, sessionmaker
 
-from ..models import Dataset, PipelineStep, utcnow
+from ..models import Dataset, PipelineStep, Resource, utcnow
 from ..storage import ObjectStore
 from .context import StageContext
 from .registry import STAGES, STAGES_BY_NAME
@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3
 FINISHED = ("passed", "warning", "failed", "skipped")
+# Dataset statuses the `decide` stage sets: accepted automatically, or waiting for a reviewer.
+DECIDED = ("accepted", "review")
 
 
 def enqueue(db: Session, dataset: Dataset) -> list[PipelineStep]:
@@ -111,6 +113,14 @@ def finish(db: Session, step_id: str, result: StageResult | None, error: str | N
             step.status, step.result = result.status, result.to_json()
             for field, value in result.dataset_updates.items():
                 setattr(dataset, field, value)
+            db.add_all(result.records)
+            if result.resource_updates:
+                db.flush()
+                db.execute(
+                    update(Resource)
+                    .where(Resource.dataset_id == dataset.id)
+                    .values(**result.resource_updates)
+                )
         stage = STAGES_BY_NAME.get(step.stage)
         if step.status == "failed" and (stage is None or stage.halts_on_failure):
             db.execute(
@@ -121,8 +131,18 @@ def finish(db: Session, step_id: str, result: StageResult | None, error: str | N
         db.flush()
         statuses = db.scalars(select(PipelineStep.status).where(PipelineStep.dataset_id == dataset.id)).all()
         if all(status in FINISHED for status in statuses):
-            # "review" means inspection passed and the dataset waits for review (#14).
-            dataset.status = "rejected" if "failed" in statuses else "review"
+            first = db.scalar(
+                select(PipelineStep.status)
+                .where(PipelineStep.dataset_id == dataset.id)
+                .order_by(PipelineStep.position)
+                .limit(1)
+            )
+            if first == "failed":
+                # The CSV could not be read, so nothing after validation ran: send it back.
+                dataset.status = "rejected"
+            elif dataset.status not in DECIDED:
+                # `decide` sets accepted or review; if it could not run, a reviewer looks.
+                dataset.status = "review"
         return step.status
 
 

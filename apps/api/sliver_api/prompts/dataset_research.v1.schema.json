@@ -1,0 +1,26 @@
+{
+  "name": "submit_research",
+  "description": "Submit whether equivalent data is freely available, with supporting sources.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "freely_available": {"type": "string", "enum": ["yes", "partly", "no", "unknown"]},
+      "summary": {"type": "string"},
+      "sources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "url": {"type": "string"},
+            "title": {"type": "string"},
+            "note": {"type": "string"}
+          },
+          "required": ["url", "title", "note"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["freely_available", "summary", "sources"],
+    "additionalProperties": false
+  }
+}

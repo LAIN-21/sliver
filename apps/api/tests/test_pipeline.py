@@ -18,6 +18,7 @@ from sliver_api.seed import seed
 from sliver_api.worker import work
 
 TIMEOUT = 300
+STAGE_NAMES = ["validate", "profile", "privacy", "duplicates", "ai_review", "research", "package", "decide"]
 
 
 def codes(result) -> list[str]:
@@ -177,8 +178,8 @@ def test_worker_runs_stages_in_order(seller, sessions, store):
         with sessions() as db:
             order.append(db.get(PipelineStep, step_id).stage)
         execute(sessions, store, step_id)
-    assert order == ["validate", "profile", "privacy", "duplicates"]
-    assert detail(seller, dataset_id)["status"] == "review"
+    assert order == STAGE_NAMES
+    assert detail(seller, dataset_id)["status"] == "accepted"
 
 
 def test_a_later_stage_is_not_claimable_while_an_earlier_one_runs(seller, sessions):
@@ -219,14 +220,12 @@ def test_claiming_uses_skip_locked(seller, sessions):
 def test_failed_validation_skips_later_stages_and_rejects(seller, sessions, store):
     dataset_id = upload(seller, body=b"a,b\n1\n").json()["id"]
     process_available(sessions, store, TIMEOUT)
-    assert steps(sessions, dataset_id) == [
-        ("validate", "failed"),
-        ("profile", "skipped"),
-        ("privacy", "skipped"),
-        ("duplicates", "skipped"),
+    assert steps(sessions, dataset_id) == [("validate", "failed")] + [
+        (name, "skipped") for name in STAGE_NAMES[1:]
     ]
     body = detail(seller, dataset_id)
     assert body["status"] == "rejected"
+    assert body["resources"] == []
     assert body["steps"][0]["findings"][0]["code"] == "row_width"
 
 
@@ -245,11 +244,7 @@ def test_abandoned_steps_are_reclaimed_then_given_up(seller, sessions, store):
         )
     assert claim_next(sessions, TIMEOUT) == step_id
     assert execute(sessions, store, step_id) == "failed"
-    assert steps(sessions, dataset_id)[1:] == [
-        ("profile", "skipped"),
-        ("privacy", "skipped"),
-        ("duplicates", "skipped"),
-    ]
+    assert steps(sessions, dataset_id)[1:] == [(name, "skipped") for name in STAGE_NAMES[1:]]
 
 
 def test_tampered_objects_fail_the_stage(seller, sessions, store):
@@ -274,8 +269,13 @@ def test_stage_crashes_are_recorded_without_stopping_the_pipeline(seller, sessio
     monkeypatch.setattr("sliver_api.pipeline.jobs.STAGES_BY_NAME", stages)
     dataset_id = upload(seller).json()["id"]
     process_available(sessions, store, TIMEOUT)
-    assert [status for _, status in steps(sessions, dataset_id)] == ["passed", "passed", "failed", "passed"]
-    assert detail(seller, dataset_id)["steps"][2]["error"].startswith("The stage could not finish")
+    statuses = [status for _, status in steps(sessions, dataset_id)]
+    assert statuses == ["passed", "passed", "failed", "passed", "passed", "skipped", "passed", "passed"]
+    body = detail(seller, dataset_id)
+    assert body["steps"][2]["error"].startswith("The stage could not finish")
+    # A stage that did not finish always sends the dataset to a reviewer.
+    assert body["status"] == "review"
+    assert body["steps"][-1]["details"]["blocking"][0]["code"] == "stage_error"
 
 
 def test_worker_loop_writes_heartbeat_and_drains_jobs(seller, settings, engine, store, sessions, tmp_path):
@@ -284,7 +284,7 @@ def test_worker_loop_writes_heartbeat_and_drains_jobs(seller, settings, engine, 
     while work(settings, engine, store):
         pass
     assert (tmp_path / "beat").exists()
-    assert {status for _, status in steps(sessions, dataset_id)} == {"passed"}
+    assert {status for _, status in steps(sessions, dataset_id)} == {"passed", "skipped"}
 
 
 # --- privacy and duplicates end to end -----------------------------------------------------
@@ -314,7 +314,8 @@ def test_privacy_findings_carry_severity_and_never_the_values(seller, sessions, 
     text = str(privacy_step)
     for secret in ("wei@example.com", "4111", "GB82", "S1234567D", "6123"):
         assert secret not in text
-    assert body["status"] == "rejected"
+    # Blocking findings go to the reviewer queue rather than straight back to the seller.
+    assert body["status"] == "review"
 
 
 @pytest.fixture
@@ -344,6 +345,8 @@ def test_near_duplicate_of_a_published_dataset_is_detected(catalog, seller, sess
     assert step["status"] == "warning"
     [item] = step["findings"]
     assert item["code"] == "near_duplicate" and item["row_overlap"] == 1.0
+    # Relisting someone else's published data always needs a reviewer.
+    assert detail(seller, dataset_id)["status"] == "review"
 
 
 def test_unrelated_data_and_private_uploads_of_others_are_not_duplicates(
@@ -372,14 +375,15 @@ def test_exact_copies_of_other_sellers_private_uploads_are_not_reported(seller, 
     process_available(sessions, store, TIMEOUT)
     body = detail(seller, dataset_id)
     assert body["steps"][3]["status"] == "passed", body["steps"][3]["findings"]
-    assert body["status"] == "review"
+    assert body["status"] == "accepted"
 
 
 def test_of_two_queued_identical_uploads_the_later_is_the_duplicate(seller, sessions, store):
     first = upload(seller).json()["id"]
     second = upload(seller, title="Double click").json()["id"]
     process_available(sessions, store, TIMEOUT)
-    assert detail(seller, first)["status"] == "review"
+    assert detail(seller, first)["status"] == "accepted"
+    assert detail(seller, second)["status"] == "review"
     [item] = detail(seller, second)["steps"][3]["findings"]
     assert item["code"] == "exact_duplicate" and item["matched_dataset"] == first
 
@@ -440,4 +444,4 @@ def test_storage_outages_leave_the_step_for_a_retry(seller, sessions, store, mon
         stale = utcnow() - timedelta(seconds=TIMEOUT + 1)
         db.execute(update(PipelineStep).where(PipelineStep.id == step_id).values(started_at=stale))
     process_available(sessions, store, TIMEOUT)
-    assert {status for _, status in steps(sessions, dataset_id)} == {"passed"}
+    assert {status for _, status in steps(sessions, dataset_id)} == {"passed", "skipped"}

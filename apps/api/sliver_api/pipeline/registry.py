@@ -1,9 +1,9 @@
-"""The ordered stage registry. Later issues (#14, #15) append AI review, packaging and valuation."""
+"""The ordered stage registry. #15 appends valuation after `decide`."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from . import duplicates, privacy, profile, validate
+from . import ai_review, decide, duplicates, package, privacy, profile, research, validate
 from .context import StageContext
 from .table import StageResult
 
@@ -22,5 +22,9 @@ STAGES: tuple[Stage, ...] = (
     Stage("profile", "Profile columns", profile.run),
     Stage("privacy", "Privacy scan", privacy.run),
     Stage("duplicates", "Duplicate check", duplicates.run),
+    Stage("ai_review", "AI review", ai_review.run),
+    Stage("research", "Free-data research", research.run),
+    Stage("package", "Package slivers", package.run),
+    Stage("decide", "Acceptance decision", decide.run),
 )
 STAGES_BY_NAME = {stage.name: stage for stage in STAGES}
