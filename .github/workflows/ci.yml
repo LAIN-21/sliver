@@ -1,0 +1,194 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  quality:
+    name: Shell, workflow and Compose checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned linters
+        run: |
+          set -euo pipefail
+          tools="$RUNNER_TEMP/sliver-linters"
+          mkdir -p "$tools"
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$tools/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $tools/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$tools/actionlint.tar.gz" -C "$tools" actionlint
+          curl --fail --location --silent --show-error --retry 3 \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
+            --output "$tools/shellcheck.tar.xz"
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $tools/shellcheck.tar.xz" | sha256sum --check
+          tar -xJf "$tools/shellcheck.tar.xz" -C "$tools" --strip-components=1 shellcheck-v0.11.0/shellcheck
+          echo "$tools" >> "$GITHUB_PATH"
+
+      - name: Check shell scripts and workflows
+        run: |
+          set -euo pipefail
+          for script in scripts/*.sh; do
+            sh -n "$script"
+          done
+          shellcheck scripts/*.sh
+          actionlint
+
+      - name: Validate Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env -f compose.yml config --quiet
+
+  api:
+    name: API lint and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16.10-bookworm
+        env:
+          POSTGRES_USER: sliver
+          POSTGRES_PASSWORD: sliverdev
+          POSTGRES_DB: sliver
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sliver -d sliver"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://sliver:sliverdev@127.0.0.1:5432/sliver
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.9.17"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+
+  web:
+    name: Web typecheck and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+
+  stack:
+    name: Containerized stack
+    needs: [quality, api, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      COMPOSE_PROJECT_NAME: sliver-ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install twice without overwriting .env
+        run: |
+          set -euo pipefail
+          make doctor
+          make install
+          printf '\n# CI preservation marker\n' >> .env
+          sha256sum .env > "$RUNNER_TEMP/env.sha256"
+          make install
+          sha256sum --check "$RUNNER_TEMP/env.sha256"
+
+      - name: Start the stack and check every service is healthy
+        run: |
+          set -euo pipefail
+          make dev-start
+          make ps
+          for service in postgres minio api worker web; do
+            container=$(docker compose --env-file .env -f compose.yml ps --all --quiet "$service")
+            test -n "$container"
+            state=$(docker inspect --format '{{.State.Status}} {{.State.Health.Status}}' "$container")
+            echo "$service: $state"
+            test "$state" = "running healthy"
+          done
+
+      - name: Check health endpoints, published ports and the web proxy
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error http://127.0.0.1:8000/api/health
+          curl --fail --silent --show-error http://127.0.0.1:5173/ > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:5173/api/health
+          ports=$(docker compose --env-file .env -f compose.yml ps --format '{{.Ports}}')
+          echo "$ports"
+          if grep -E '(^|, )(0\.0\.0\.0|\[::\]|:::)' <<< "$ports"; then
+            echo "A port is published on all interfaces; only 127.0.0.1 is allowed."
+            exit 1
+          fi
+
+      - name: Tests and lint inside the containers
+        run: |
+          set -euo pipefail
+          make test
+          make lint
+
+      - name: Health degrades when storage is down
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env -f compose.yml stop minio
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/api/health)
+          echo "health with storage stopped: $status"
+          test "$status" = "503"
+          docker compose --env-file .env -f compose.yml start minio
+
+      - name: Stop keeps named volumes
+        run: |
+          set -euo pipefail
+          make dev-stop
+          docker volume ls --format '{{.Name}}' | grep -x "${COMPOSE_PROJECT_NAME}_postgres_data"
+          docker volume ls --format '{{.Name}}' | grep -x "${COMPOSE_PROJECT_NAME}_minio_data"
+
+      - name: Diagnostics
+        if: failure()
+        run: make logs
+
+      - name: Remove CI containers and volumes
+        if: always()
+        run: make dev-reset

@@ -1,0 +1,44 @@
+[project]
+name = "sliver-api"
+version = "0.1.0"
+description = "Sliver marketplace API and pipeline worker"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    # x402-xrpl 0.3.4 (XRPL x402 SDK, added with payments) requires fastapi<0.116 and uvicorn<0.31.
+    "fastapi>=0.115.14,<0.116",
+    "uvicorn[standard]>=0.30.6,<0.31",
+    "pydantic-settings>=2.16,<3",
+    "sqlalchemy>=2.1.8,<2.2",
+    "alembic>=1.20,<2",
+    "psycopg[binary]>=3.3.8,<4",
+    "boto3>=1.43,<2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2,<10",
+    "httpx>=0.28.1,<1",
+    "ruff>=0.17.4,<0.18",
+]
+
+[tool.uv]
+# The API is an application, not a distributed package.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-p no:cacheprovider"
+markers = ["s3: needs a reachable S3-compatible endpoint (skipped otherwise)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py313"
+cache-dir = "/tmp/ruff-cache"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
