@@ -11,11 +11,11 @@ Area instructions may add constraints. They must not weaken repository-wide prod
 - [infrastructure.md](infrastructure.md)
 - [catalog.md](catalog.md)
 - [transactions.md](transactions.md)
+- [seller.md](seller.md)
 
 ## Future files
 
 Add these only when the corresponding boundary is real:
 
-- seller
 - application API
 - database

@@ -16,7 +16,10 @@ This document records system-level decisions, assumptions, and open questions. P
 - Sliver is intended to support settlement through the XRP Ledger.
 - The API and pipeline worker use Python 3.13, FastAPI 0.115.x, SQLAlchemy 2 and Alembic; the web app uses React, TypeScript, Vite and Tailwind CSS. See [ADR 0003](adr/0003-application-stack-and-local-containers.md).
 - Local development runs entirely in Docker Compose: PostgreSQL, MinIO, API, worker and web, published on 127.0.0.1 only.
-- Background jobs will be PostgreSQL rows claimed with `FOR UPDATE SKIP LOCKED`; there is no queue service. The worker does not claim jobs yet; claiming arrives with the first pipeline stage (#13).
+- Background jobs are PostgreSQL rows claimed with `FOR UPDATE SKIP LOCKED`; there is no queue service. Each seller upload gets one `pipeline_steps` row per stage. A step is claimable once every earlier step of its dataset has finished, so a dataset's stages run in order while several workers can serve different datasets. A step left `running` by a dead worker is reclaimed after a timeout (five minutes by default) and fails after three attempts.
+- The seller inspection pipeline is an ordered stage registry (`pipeline/registry.py`): validate, profile, privacy, duplicates. Each stage returns findings with a severity (`high`, `medium`, `low`); any `high` finding fails the stage. A failed validation skips the remaining stages; otherwise every stage runs and the dataset ends `rejected` if any stage failed, or `review` when inspection passed. AI review, packaging and valuation append stages later. See [agents/seller.md](agents/seller.md).
+- Seller uploads are stored once under a new key with their SHA-256 and never overwritten; the worker re-checks the hash before every stage.
+- Sellers and reviewers are demo accounts with scrypt password hashes set from the environment by `make seed` (there is no public signup). Sign-in creates a server-side session; the browser holds only a random token in an `HttpOnly`, `SameSite=Lax` cookie, and the database stores its SHA-256. Every mutation must carry an allow-listed `Origin` header.
 - A Resource ("sliver") is either a whole dataset or one slice of it (one value of a column, or one calendar month of a date column). Each Resource is stored as its own immutable CSV object with its own SHA-256, so delivery and integrity checks never touch the rest of the dataset.
 - Public discovery serializes Resources through one allow-list (`catalog/public.py`) and searches them with PostgreSQL full-text search, matching any query term and ranking by relevance. See [agents/catalog.md](agents/catalog.md).
 - Resources are bought with x402 v2 on XRPL Testnet: `GET /api/resources/{id}/data` answers 402, buyers pay the seller directly with a presigned Payment, a facilitator (t54 by default) settles it, and Sliver independently checks the ledger before delivering. Sliver never signs or holds funds. See [ADR 0004](adr/0004-x402-payments-on-xrpl.md) and [agents/transactions.md](agents/transactions.md).
@@ -33,7 +36,7 @@ This document records system-level decisions, assumptions, and open questions. P
 - Cloud provider
 - Cache
 - Vector database
-- Authentication provider
+- Authentication provider beyond the demo accounts
 - Resource metadata schema
 - Exact pricing formula
 - Whether the four conceptual responsibilities become packages, modules, services, or deployables
