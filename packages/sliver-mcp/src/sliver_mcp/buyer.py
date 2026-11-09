@@ -10,6 +10,7 @@ listing's SHA-256 before they are saved as the purchased file.
 import hashlib
 import re
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -38,6 +39,7 @@ from .store import PurchaseInFlight, Store, iso, now
 
 RESOURCE_ID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 RETRYABLE = frozenset({"settlement_pending", "settlement_status_unknown"})
+AGENT_NOTE_MAX = 200  # the API's cap for X-Sliver-Agent-Note
 
 
 class Refused(Exception):
@@ -70,6 +72,20 @@ def check_resource_id(resource_id: str) -> str:
     if not RESOURCE_ID.match(resource_id or ""):
         raise Refused("invalid_resource_id", "resource_id must be a Sliver Resource id.")
     return resource_id
+
+
+def agent_note(reason: str | None) -> str | None:
+    """The agent's stated reason as sent in X-Sliver-Agent-Note: printable, single-spaced, at most
+    200 characters. Mirrors the API's sanitizer. Sliver shows it publicly on the purchase timeline."""
+    if not isinstance(reason, str):
+        return None
+    kept = "".join(
+        " " if char.isspace() else char
+        for char in reason
+        if unicodedata.category(char)[0] != "C" or char.isspace()
+    )
+    note = " ".join(kept.split())[:AGENT_NOTE_MAX].strip()
+    return note or None
 
 
 def error_code(response: httpx.Response) -> tuple[str, str]:
@@ -128,8 +144,14 @@ class Buyer:
         return budget_minor
 
     def buy(
-        self, resource_id: str, budget_usd: float | None, output_dir: str | None = None
+        self,
+        resource_id: str,
+        budget_usd: float | None,
+        output_dir: str | None = None,
+        reason: str | None = None,
     ) -> dict[str, Any]:
+        """Buy one listing within `budget_usd`, under the purchase lock. `reason` is the agent's
+        stated reason; once cleaned by `agent_note` it goes to Sliver as X-Sliver-Agent-Note."""
         check_resource_id(resource_id)
         if budget_usd is None:  # refuse before touching the network
             self.check_policy(0, None)
@@ -150,15 +172,20 @@ class Buyer:
         try:
             with self.store.one_purchase():
                 self.check_policy(price_minor, budget_usd)  # re-check under the lock
-                return self.pay(listing, price_minor, Path(output_dir or self.config.output_dir).expanduser())
+                output = Path(output_dir or self.config.output_dir).expanduser()
+                return self.pay(listing, price_minor, output, agent_note(reason))
         except PurchaseInFlight as error:
             raise Refused("purchase_in_flight", str(error)) from None
 
-    def pay(self, listing: dict[str, Any], price_minor: int, output_dir: Path) -> dict[str, Any]:
+    def pay(
+        self, listing: dict[str, Any], price_minor: int, output_dir: Path, note: str | None = None
+    ) -> dict[str, Any]:
+        """Get the 402 challenge, check it against the listing, sign, pay and save the bytes.
+        `note` rides on the challenge request and on every paid attempt."""
         resource_id = listing["id"]
         signer = self.signer_factory()
         try:
-            unpaid = self.api.fetch_data(resource_id)
+            unpaid = self.api.fetch_data(resource_id, note=note)
         except httpx.HTTPError as error:
             raise Refused("api_unreachable", str(error)) from None
         if unpaid.status_code != 402:
@@ -208,7 +235,7 @@ class Buyer:
             "explorer_url": explorer_url(tx_hash),
             "purchase_id": record["id"],
         }
-        response = self.send(resource_id, header)
+        response = self.send(resource_id, header, note)
         if response is None or response.status_code != 200:
             code, message = (
                 ("timeout", "No response from Sliver") if response is None else error_code(response)
@@ -276,12 +303,12 @@ class Buyer:
             result["warning"] = "Sliver reported a different settlement transaction than the one signed here."
         return result
 
-    def send(self, resource_id: str, header: str) -> httpx.Response | None:
+    def send(self, resource_id: str, header: str, note: str | None = None) -> httpx.Response | None:
         """Send the payment; retry the same payment while Sliver says settlement is pending."""
         response = None
         for attempt in range(self.settle_attempts):
             try:
-                response = self.api.fetch_data(resource_id, header)
+                response = self.api.fetch_data(resource_id, header, note)
             except httpx.HTTPError:
                 response = None
             else:

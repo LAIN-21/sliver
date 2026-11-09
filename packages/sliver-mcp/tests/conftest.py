@@ -111,6 +111,7 @@ class StubSliver:
         self.receipts: dict[str, dict] = {}
         self.overrides: dict[str, httpx.Response] = {}  # path prefix -> canned (malformed) response
         self.paid_response: httpx.Response | None = None  # canned answer to a paid request
+        self.data_requests: list[httpx.Request] = []  # every request to the x402 data endpoint
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -158,6 +159,7 @@ class StubSliver:
         return httpx.Response(402, json=body, headers={"PAYMENT-REQUIRED": b64(body)})
 
     def data_endpoint(self, request: httpx.Request, resource_id: str) -> httpx.Response:
+        self.data_requests.append(request)
         header = request.headers.get("PAYMENT-SIGNATURE")
         if not header:
             return self.challenge(request, resource_id)
