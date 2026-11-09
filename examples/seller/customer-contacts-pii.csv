@@ -1,0 +1,6 @@
+customer_name,email,phone,card_number,iban,nric,city,orders_last_90d
+Tan Wei Ming,wei.ming.tan@example.com,+65 6123 4567,4111 1111 1111 1111,GB82 WEST 1234 5698 7654 32,S1234567D,Singapore,12
+Priya Nair,priya.nair@example.org,9123 4567,5555-5555-5555-4444,DE89370400440532013000,T0123456G,Singapore,4
+Lim Hui Shan,huishan.lim@example.net,+65 8765 4321,378282246310005,FR1420041010050500013M02606,F1234567N,Johor Bahru,-3
+Ahmad Faizal,a.faizal@example.com,+60 12-345 6789,6011111111111117,NL91ABNA0417164300,G7654321X,Kuala Lumpur,7
+Chen Jia Hui,jiahui.chen@example.com,555-123-4567,4000 0000 0000 0002,,M1234567K,Singapore,0

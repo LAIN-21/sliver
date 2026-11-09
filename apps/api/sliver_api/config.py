@@ -36,8 +36,24 @@ class Settings(BaseSettings):
     payment_timeout_seconds: int = Field(default=600, ge=60, le=3600)
     payment_source_tag: int = 804681468
     worker_poll_seconds: float = Field(default=2.0, gt=0, le=60)
+    # A running pipeline step whose worker vanished is reclaimed after this long.
+    pipeline_step_timeout_seconds: int = Field(default=300, ge=30, le=3600)
+    # Demo accounts (`make seed`). An empty password leaves that account unable to sign in.
+    sliver_seller_password: str = Field(default="", repr=False)
+    sliver_reviewer_password: str = Field(default="", repr=False)
+    # Browser origins allowed to send mutations (comma-separated). Everything else is refused.
+    sliver_allowed_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
+    session_ttl_hours: int = Field(default=12, ge=1, le=168)
+    # Local development serves plain http; set true behind https so the cookie is Secure.
+    session_cookie_secure: bool = False
     # Container-private path that the worker healthcheck in compose.yml reads.
     worker_heartbeat_path: str = "/tmp/sliver-worker.heartbeat"  # noqa: S108
+
+    @property
+    def allowed_origins(self) -> frozenset[str]:
+        return frozenset(
+            origin.strip().rstrip("/") for origin in self.sliver_allowed_origins.split(",") if origin.strip()
+        )
 
     @model_validator(mode="after")
     def build_database_url(self) -> "Settings":

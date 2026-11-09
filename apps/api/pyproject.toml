@@ -14,6 +14,8 @@ dependencies = [
     "boto3>=1.43,<2",
     "x402-xrpl==0.3.4",
     "xrpl-py>=5.2,<6",
+    # Multipart form parsing for seller CSV uploads (FastAPI optional dependency).
+    "python-multipart>=0.0.20,<0.1",
 ]
 
 [dependency-groups]

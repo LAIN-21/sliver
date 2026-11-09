@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
@@ -147,4 +148,42 @@ class Payment(Base):
 
     __table_args__ = (
         CheckConstraint("status IN ('required', 'settling', 'delivered', 'failed')", name="payments_status"),
+    )
+
+
+class AuthSession(Base):
+    """A server-side sign-in. Only the SHA-256 of the cookie token is stored."""
+
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class PipelineStep(Base):
+    """One inspection stage for one dataset; pending rows are the worker's job queue."""
+
+    __tablename__ = "pipeline_steps"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    dataset_id: Mapped[str] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), index=True)
+    stage: Mapped[str] = mapped_column(String(32))
+    position: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # Stage output shown to the seller: {"summary": ..., "findings": [...], ...}.
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'passed', 'warning', 'failed', 'skipped')",
+            name="pipeline_steps_status",
+        ),
+        UniqueConstraint("dataset_id", "stage", name="pipeline_steps_dataset_stage"),
     )

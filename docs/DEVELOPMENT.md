@@ -67,6 +67,25 @@ Public endpoints:
 - `GET /api/catalog/categories`: categories with counts.
 - `GET /api/demand?days=7`: searches that found nothing.
 
+## Seller uploads and inspection
+
+Set `SLIVER_SELLER_PASSWORD` and `SLIVER_REVIEWER_PASSWORD` in `.env` (empty values disable sign-in), restart the stack with `make dev-start` so the containers pick them up, then run `make seed`. Sign in at http://127.0.0.1:5173/sell/login as a demo seller (`harbour-analytics@sliver.local` or `strait-line-data@sliver.local`) or as `reviewer@sliver.local`. Re-run `make seed` after changing a password.
+
+Sellers upload a UTF-8 CSV (at most 5 MiB, 10,000 rows, 100 columns) with a title, provenance (source, method, collection date) and a rights confirmation. The worker then runs validate, profile, privacy and duplicates; the dataset page polls and shows each stage's status and findings. Sellers see only their own uploads; the reviewer sees only datasets whose inspection passed.
+
+Fixtures for manual checks live in `examples/seller/`:
+
+- `customer-contacts-pii.csv`: emails, phone numbers, Luhn-valid test card numbers, IBANs and NRIC/FIN numbers (all fictitious) under sensitive column names.
+- `spot-rates-relisted.csv`: a near duplicate of the published container spot rates (about 5% of prices changed).
+- `invalid-quality.csv`: a formula in a header cell, a short row and formula cells next to plain negative numbers.
+- Uploading `examples/datasets/sg-berth-waiting-times.csv` itself shows an exact duplicate.
+
+Endpoints (all mutations need an allowed `Origin`, see `SLIVER_ALLOWED_ORIGINS`):
+
+- `POST /api/auth/login` (`{"email", "password"}`), `POST /api/auth/logout`, `GET /api/auth/me`.
+- `POST /api/seller/datasets`: multipart `file`, `title`, `source`, `method`, `collected_at` (ISO date), `rights_confirmed=true` and an optional `rights_statement`. Bodies over the limit get 413 before parsing.
+- `GET /api/seller/datasets` and `GET /api/seller/datasets/{id}`: datasets visible to the signed-in account, with per-stage status, findings and the column profile.
+
 ## Payments (x402 on XRPL Testnet)
 
 See [ADR 0004](adr/0004-x402-payments-on-xrpl.md). After `make seed` and `make wallets`:

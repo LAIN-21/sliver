@@ -13,9 +13,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from .auth.service import apply_demo_passwords, normalize_email
 from .models import Dataset, Resource, User, utcnow
 from .storage import ObjectExistsError, ObjectStore
 
@@ -93,9 +94,10 @@ def store_object(store: ObjectStore, key: str, body: bytes) -> None:
 
 
 def upsert_seller(db: Session, seller: dict) -> User:
-    user = db.scalar(select(User).where(User.email == seller["email"]))
+    email = normalize_email(seller["email"])
+    user = db.scalar(select(User).where(func.lower(User.email) == email).order_by(User.created_at).limit(1))
     if user is None:
-        user = User(email=seller["email"], display_name=seller["display_name"], role="seller")
+        user = User(email=email, display_name=seller["display_name"], role="seller")
         db.add(user)
         db.flush()
     return user
@@ -192,12 +194,20 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
     return created
 
 
-def seed(sessions: sessionmaker[Session], store: ObjectStore, folder: Path) -> dict:
+def seed(
+    sessions: sessionmaker[Session],
+    store: ObjectStore,
+    folder: Path,
+    passwords: tuple[str, str] | None = None,
+) -> dict:
+    """`passwords` is (seller, reviewer) for the demo accounts; empty strings disable sign-in."""
     manifest = tomllib.loads((folder / "manifest.toml").read_text(encoding="utf-8"))
     store.initialize()
     created = 0
     with sessions() as db:
         sellers = {seller["key"]: upsert_seller(db, seller) for seller in manifest["sellers"]}
+        if passwords is not None:
+            apply_demo_passwords(db, list(sellers.values()), *passwords)
         for spec in manifest["datasets"]:
             created += seed_dataset(db, store, folder, spec, sellers[spec["seller"]])
         db.commit()
@@ -215,7 +225,8 @@ def main() -> None:
     settings = get_settings()
     engine = make_engine(settings.database_url)
     try:
-        result = seed(make_session_factory(engine), S3Store(settings), folder)
+        passwords = (settings.sliver_seller_password, settings.sliver_reviewer_password)
+        result = seed(make_session_factory(engine), S3Store(settings), folder, passwords)
     finally:
         engine.dispose()
     logger.info("seed complete: %s", result)
