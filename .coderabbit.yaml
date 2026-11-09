@@ -1,0 +1,6 @@
+# CodeRabbit reviews each pull request once, when it is opened.
+# It does not re-review on later pushes; comment `@coderabbitai review` to ask for another run.
+reviews:
+  auto_review:
+    enabled: true
+    auto_incremental_review: false
