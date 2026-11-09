@@ -52,6 +52,8 @@ The application containers derive `DATABASE_URL` and S3 credentials from the Pos
 - `make test`: runs the API test suite in the API container against PostgreSQL (database `<POSTGRES_DB>_test`, created automatically) and MinIO.
 - `make lint`: Ruff lint and format check for the API, TypeScript typecheck for the web app.
 - `make migrate`: applies database migrations (the API also does this on start).
+- `make wallets`: creates faucet-funded XRPL Testnet wallets for the demo sellers and a demo buyer (seeds go into `.env`, reused later) and sets the sellers' payout addresses. Run it after `make seed`, and again after a database reset.
+- `make smoke-testnet`: with the stack running, buys the cheapest Resource on XRPL Testnet with t54's official client, checks the bytes against the catalog SHA-256, replays the payment, and asks the official x402.org facilitator to verify our requirements. Prints the transaction and explorer link.
 - `make seed`: loads the demo catalog from `examples/datasets` (synthetic trade and logistics data, two demo sellers). Safe to run repeatedly.
 
 ## Demo catalog
@@ -64,6 +66,16 @@ Public endpoints:
 - `GET /api/catalog/{id}`: one published Resource.
 - `GET /api/catalog/categories`: categories with counts.
 - `GET /api/demand?days=7`: searches that found nothing.
+
+## Payments (x402 on XRPL Testnet)
+
+See [ADR 0004](adr/0004-x402-payments-on-xrpl.md). After `make seed` and `make wallets`:
+
+- `GET /api/resources/{id}/data`: without `PAYMENT-SIGNATURE` it answers 402 with x402 v2 `PAYMENT-REQUIRED`; with a valid payment it returns the CSV plus `PAYMENT-RESPONSE` and an `X-Sliver-Receipt` id.
+- `GET /api/receipts/{id}`: public receipt with the transaction hash and explorer link.
+- `GET /.well-known/x402`: machine-readable list of paid endpoints and prices.
+
+Settings (all optional, see `.env.example`): `FACILITATOR_URL`, `XRPL_RPC_URL` (Testnet allow-list only) and `DROPS_PER_USD`.
 
 ## Working on the code
 

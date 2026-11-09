@@ -7,6 +7,7 @@ Accepted records:
 - [0001-postgresql-primary-relational-database.md](0001-postgresql-primary-relational-database.md)
 - [0002-s3-compatible-object-storage.md](0002-s3-compatible-object-storage.md)
 - [0003-application-stack-and-local-containers.md](0003-application-stack-and-local-containers.md)
+- [0004-x402-payments-on-xrpl.md](0004-x402-payments-on-xrpl.md)
 
 Do not add speculative ADRs.
 
@@ -22,7 +23,7 @@ Create an ADR before or with the change that:
 - Defines transaction architecture
 - Chooses cloud architecture
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md) for current decisions, assumptions, and open questions. Transaction architecture, including x402 integration, remains open until an ADR records it.
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for current decisions, assumptions, and open questions. Transaction architecture and the x402 integration are recorded in ADR 0004.
 
 ## Format
 

@@ -79,7 +79,7 @@ def clean_tables(database_url):
     engine = create_engine(database_url)
     try:
         with engine.begin() as connection:
-            connection.execute(text("TRUNCATE search_events, resources, datasets, users CASCADE"))
+            connection.execute(text("TRUNCATE payments, search_events, resources, datasets, users CASCADE"))
     finally:
         engine.dispose()
 

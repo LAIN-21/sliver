@@ -15,6 +15,9 @@ x-app-environment: &app-environment
   S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
   S3_BUCKET: ${S3_BUCKET:-sliver-private}
   S3_REGION: ${S3_REGION:-us-east-1}
+  FACILITATOR_URL: ${FACILITATOR_URL:-https://xrpl-facilitator-testnet.t54.ai}
+  XRPL_RPC_URL: ${XRPL_RPC_URL:-https://s.altnet.rippletest.net:51234/}
+  DROPS_PER_USD: ${DROPS_PER_USD:-400000}
 
 services:
   postgres:
