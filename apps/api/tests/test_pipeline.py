@@ -375,6 +375,15 @@ def test_exact_copies_of_other_sellers_private_uploads_are_not_reported(seller, 
     assert body["status"] == "review"
 
 
+def test_of_two_queued_identical_uploads_the_later_is_the_duplicate(seller, sessions, store):
+    first = upload(seller).json()["id"]
+    second = upload(seller, title="Double click").json()["id"]
+    process_available(sessions, store, TIMEOUT)
+    assert detail(seller, first)["status"] == "review"
+    [item] = detail(seller, second)["steps"][3]["findings"]
+    assert item["code"] == "exact_duplicate" and item["matched_dataset"] == first
+
+
 def test_own_earlier_upload_is_linked_as_a_duplicate(seller, sessions, store):
     first = upload(seller).json()["id"]
     process_available(sessions, store, TIMEOUT)

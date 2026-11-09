@@ -143,3 +143,31 @@ def test_reseeding_with_the_same_password_keeps_sessions(sessions, store, make_c
     sign_in(client, email, "seller-pass")
     seed(sessions, store, FIXTURES, ("seller-pass", ""))
     assert client.get("/api/auth/me").status_code == 200
+
+
+def test_mixed_case_stored_emails_still_sign_in(make_client, sessions):
+    make_user(sessions, "Legacy.Seller@Example.test")
+    sign_in(make_client(), "legacy.seller@example.test")
+
+
+def test_accounts_differing_only_in_case_are_ambiguous(make_client, sessions):
+    make_user(sessions, "twin@example.test")
+    make_user(sessions, "TWIN@example.test")
+    response = make_client().post(
+        "/api/auth/login", json={"email": "twin@example.test", "password": PASSWORD}
+    )
+    assert response.status_code == 401
+
+
+def test_seed_normalizes_manifest_emails_and_reuses_existing_accounts(sessions, store, tmp_path):
+    manifest = (FIXTURES / "manifest.toml").read_text()
+    email = next(line.split('"')[1] for line in manifest.splitlines() if line.startswith("email"))
+    make_user(sessions, email.upper(), password=None)
+    for name in ("berths.csv", "rates.csv"):
+        (tmp_path / name).write_bytes((FIXTURES / name).read_bytes())
+    (tmp_path / "manifest.toml").write_text(manifest.replace(email, email.title()))
+    seed(sessions, store, tmp_path, ("seller-pass", ""))
+    with sessions() as db:
+        sellers = db.scalars(select(User).where(User.role == "seller")).all()
+    assert [seller.email for seller in sellers] == [email.upper()]  # reused, not duplicated
+    assert sellers[0].password_hash is not None

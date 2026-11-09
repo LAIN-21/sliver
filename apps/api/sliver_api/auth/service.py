@@ -4,7 +4,7 @@ import hashlib
 import secrets
 from datetime import timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import AuthSession, User, utcnow
@@ -18,8 +18,15 @@ def token_id(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
 def authenticate(db: Session, email: str, password: str) -> User | None:
-    user = db.scalar(select(User).where(User.email == email.strip().lower()))
+    # Case-insensitive, so accounts stored before emails were normalized still sign in. Two
+    # accounts differing only in case are ambiguous and neither signs in this way.
+    matches = db.scalars(select(User).where(func.lower(User.email) == normalize_email(email)).limit(2)).all()
+    user = matches[0] if len(matches) == 1 else None
     if not verify_password(password, user.password_hash if user else None):
         return None
     return user

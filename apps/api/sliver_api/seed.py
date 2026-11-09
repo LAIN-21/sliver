@@ -13,10 +13,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .auth.service import apply_demo_passwords
+from .auth.service import apply_demo_passwords, normalize_email
 from .models import Dataset, Resource, User, utcnow
 from .storage import ObjectExistsError, ObjectStore
 
@@ -94,9 +94,10 @@ def store_object(store: ObjectStore, key: str, body: bytes) -> None:
 
 
 def upsert_seller(db: Session, seller: dict) -> User:
-    user = db.scalar(select(User).where(User.email == seller["email"]))
+    email = normalize_email(seller["email"])
+    user = db.scalar(select(User).where(func.lower(User.email) == email).order_by(User.created_at).limit(1))
     if user is None:
-        user = User(email=seller["email"], display_name=seller["display_name"], role="seller")
+        user = User(email=email, display_name=seller["display_name"], role="seller")
         db.add(user)
         db.flush()
     return user

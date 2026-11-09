@@ -7,7 +7,7 @@ Resource, so another seller's private upload is never revealed through a finding
 import hashlib
 import logging
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import and_, exists, or_, select
 
 from ..models import Dataset, Resource
 from .context import StageContext
@@ -88,8 +88,14 @@ def run(context: StageContext) -> StageResult:
     is_published = exists().where(Resource.dataset_id == Dataset.id, Resource.status == "published")
     # Only the seller's own datasets and published ones: matching another seller's private upload
     # would reveal that it exists and would let whoever uploads a copy first block the owner.
+    # Only earlier uploads count, so of two identical uploads the later one is the duplicate,
+    # however the worker interleaves them.
+    earlier = or_(
+        Dataset.created_at < dataset.created_at,
+        and_(Dataset.created_at == dataset.created_at, Dataset.id < dataset.id),
+    )
     others = (
-        Dataset.id != dataset.id,
+        earlier,
         Dataset.status != "rejected",
         or_(Dataset.owner_id == dataset.owner_id, is_published),
     )
