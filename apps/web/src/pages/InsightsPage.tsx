@@ -33,6 +33,9 @@ function Insights() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const latest = useRef(0);
   const owned = useRef(new Set<string>());
+  // Custom slices are created after this page loads: a delivery of an unknown sliver reloads once,
+  // and the reload says whether it is this seller's.
+  const foreign = useRef(new Set<string>());
   const loaded = useRef(false);
   const now = useNow();
 
@@ -65,7 +68,13 @@ function Insights() {
   const onEvent = useCallback(
     (event: ActivityEvent) => {
       // A new delivery of one of this seller's slivers (a replay charges nothing new).
-      if (event.type === "delivered" && event.detail !== "replay" && owned.current.has(event.resource.id)) load();
+      if (event.type !== "delivered" || event.detail === "replay") return;
+      const id = event.resource.id;
+      if (owned.current.has(id)) load();
+      else if (!foreign.current.has(id)) {
+        foreign.current.add(id);
+        load();
+      }
     },
     [load],
   );
@@ -170,6 +179,11 @@ function Insights() {
                     <Link to={`/resources/${item.resource.id}`} className="hover:underline">
                       {item.resource.title}
                     </Link>
+                    {item.resource.custom_slice_of ? (
+                      <span className="ml-2 rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-muted">
+                        custom slice
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 tabular-nums whitespace-nowrap">
                     {formatPrice(item.amount.usd_minor)}{" "}

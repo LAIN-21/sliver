@@ -21,6 +21,7 @@ from .ratelimit import RateLimit, TokenBuckets
 from .security import BodyLimit, OriginCheck
 from .seller.routes import UPLOAD_BODY_LIMIT, UPLOAD_PATH
 from .seller.routes import router as seller_router
+from .slices.routes import router as slices_router
 from .storage import ObjectStore, S3Store
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def create_app(
 
     app.include_router(catalog_router)
     app.include_router(payments_router)
+    app.include_router(slices_router)
     app.include_router(activity_router)
     app.include_router(auth_router)
     app.include_router(seller_router)

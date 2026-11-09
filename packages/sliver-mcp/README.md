@@ -10,7 +10,8 @@ It is the buyer's own tool. It runs on your machine over stdio, signs payments l
 |---|---|---|
 | `sliver_search` | Search the catalog (public metadata only) | No |
 | `sliver_inspect` | Full listing: columns, coverage, provenance, price, SHA-256 | No |
-| `sliver_evaluate` | Deterministic fit report for a need: `buy`, `skip` or `look_elsewhere`, with reasons (required columns, time-range overlap, freshness, price vs budget) | No |
+| `sliver_evaluate` | Deterministic fit report for a need: `buy`, `skip` or `look_elsewhere`, with reasons (required columns, time-range overlap, freshness, price vs budget), and a custom-slice suggestion when the best sliver covers much more than the need | No |
+| `sliver_quote_slice` | Quote a custom slice: just the rows the need covers (a time range and/or equality on category columns) from a full-dataset listing; returns an unlisted sliver id, a one-sentence summary for the human, price in USD and XRP, rows × columns, coverage, SHA-256 and validity | No |
 | `sliver_buy` | Buy one sliver within a budget, with an optional `reason`; saves the CSV, verifies its SHA-256, returns the transaction hash, explorer link and receipt | Yes (Testnet XRP) |
 | `sliver_wallet` | Wallet address, Testnet balance, spend in the last 24 hours (never the seed) | No |
 | `sliver_purchases` | Purchases made from this machine | No |
@@ -20,6 +21,10 @@ The server tells agents to evaluate before buying, to say so and look elsewhere 
 ### The agent's reason
 
 `sliver_buy` takes an optional `reason`: a short, honest statement of why the human needs the data, for example "Weekly SGSIN-CNSHA spot rates since September to quote a shipment". The MCP sends it as the `X-Sliver-Agent-Note` header on both the request that gets the 402 challenge and the paid request, and Sliver shows it **publicly** on the live purchase timeline. Before sending, the MCP drops control and formatting characters, collapses whitespace, cuts it to 200 characters and encodes it as UTF-8; Sliver sanitizes it again. With no reason, no header is sent. Agents are told never to put wallet data, seeds, budgets or their human's private details in it.
+
+### Custom slices
+
+When the best pre-cut sliver covers much more than the need (the requested time range is at most half of what it covers), `sliver_evaluate` returns `custom_slice`: the arguments for `sliver_quote_slice` on a full-dataset listing that offers custom slices (`custom_slices.available` in its listing), keeping the sliver's category (for example `{"lane": "SGSIN-CNSHA"}`) when the full dataset has that column. Quoting is free and never spends: Sliver cuts the rows, prices them per row from the full dataset's published price (never above it) and answers with an unlisted sliver id. The quote has a one-sentence `summary` for the human ("$0.24 (0.096 XRP) for 8 rows × 4 columns …"), the price in USD and XRP, rows, columns, coverage, the filter, the parent listing and seller, the SHA-256 and its validity (the price is fixed while the parent stays published; each purchase gets a fresh invoice). The agent tells its human the summary and calls `sliver_buy` with the quote's id only after the human agrees, under the same budget and caps. Like any sliver, the buyer pays through Sliver, and the seller is credited (net of Sliver's fee) and paid out on the 15-day schedule. Sliver never decides to spend. A refusal says what can be filtered, or points to an existing sliver with exactly those rows.
 
 ## Spending policy
 

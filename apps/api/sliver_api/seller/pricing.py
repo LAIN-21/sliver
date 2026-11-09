@@ -20,7 +20,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import ai, valuation
@@ -77,6 +77,8 @@ class PublishForm(BaseModel):
     sample_rows: list[Annotated[int, Field(ge=1)]] = Field(
         default_factory=list, max_length=MAX_PUBLIC_SAMPLE_ROWS
     )
+    # Whether buyers may quote custom slices of the published dataset (#39). On by default.
+    allow_custom_slices: bool = True
 
 
 # --- reading what the pipeline found --------------------------------------------------------
@@ -122,6 +124,8 @@ def comparables(db: Session, dataset: Dataset, category: str) -> tuple[valuation
             Resource.status == "published",
             Resource.category == category,
             Resource.dataset_id != dataset.id,
+            # Buyer-defined custom slices are priced from their parent, never used as comparables.
+            Resource.parent_id.is_(None),
         )
         .order_by(Resource.id)
     ).all()
@@ -368,10 +372,11 @@ def in_sliver(table: Table, resource: Resource, row: list[str]) -> bool:
 
 
 def dataset_resources(db: Session, dataset: Dataset) -> list[Resource]:
+    """The slivers packaged from this dataset; buyer-defined custom slices are counted separately."""
     return list(
         db.scalars(
             select(Resource)
-            .where(Resource.dataset_id == dataset.id)
+            .where(Resource.dataset_id == dataset.id, Resource.parent_id.is_(None))
             .order_by(Resource.slice_filter.is_not(None), Resource.title)
         )
     )
@@ -382,6 +387,16 @@ def price_all(db: Session, dataset: Dataset, resources: list[Resource]):
     inputs = gather_inputs(db, dataset, resources, steps)
     priced = {resource.id: valuation.value(inputs[resource.id]) for resource in resources}
     return steps, inputs, priced
+
+
+def custom_slices_view(db: Session, dataset: Dataset) -> dict:
+    """Whether buyers may cut custom slices of this dataset, and how many they have cut."""
+    count = db.scalar(
+        select(func.count())
+        .select_from(Resource)
+        .where(Resource.dataset_id == dataset.id, Resource.parent_id.is_not(None))
+    )
+    return {"allowed": dataset.allow_custom_slices, "count": count or 0}
 
 
 def sliver_view(resource: Resource, result: valuation.Valuation | None = None) -> dict:
@@ -419,6 +434,7 @@ def report(db: Session, store: ObjectStore, dataset: Dataset) -> dict:
             "payout_ready": bool((owner := db.get(User, dataset.owner_id)) and owner.xrpl_address),
             "explanation": first.get("explanation"),
             "slivers": [sliver_view(resource) for resource in resources],
+            "custom_slices": custom_slices_view(db, dataset),
             "sample": {
                 "max_rows": MAX_PUBLIC_SAMPLE_ROWS,
                 "selected": first.get("sample_row_numbers", []),
@@ -444,6 +460,7 @@ def report(db: Session, store: ObjectStore, dataset: Dataset) -> dict:
         "payout_ready": bool(owner and owner.xrpl_address),
         "explanation": explain(store, payload, allow_call=True),
         "slivers": [sliver_view(resource, priced[resource.id]) for resource in drafts],
+        "custom_slices": custom_slices_view(db, dataset),
         "sample": {
             "max_rows": MAX_PUBLIC_SAMPLE_ROWS,
             "selected": [],
@@ -515,5 +532,6 @@ def publish(
             "sample_row_numbers": chosen,
         }
     dataset.status = PUBLISHED
+    dataset.allow_custom_slices = form.allow_custom_slices
     db.commit()
     return dataset

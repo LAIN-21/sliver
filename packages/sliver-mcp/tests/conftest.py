@@ -88,8 +88,15 @@ LISTINGS = [
         "provenance": {"collected_at": "2026-11-01"},
         "content": {"sha256": "1" * 64, "size_bytes": 1, "format": "text/csv"},
         "published_at": "2026-11-09T07:09:00Z",
+        "custom_slices": {"available": True},
     },
 ]
+
+FULL_BERTHS = LISTINGS[2]["id"]
+CUSTOM_ID = "44444444-4444-4444-8444-444444444444"
+CUSTOM_CSV = b"date,avg_berth_wait_hours\n" + b"".join(
+    f"2026-10-{day:02d},{day / 10:.1f}\n".encode() for day in range(1, 11)
+)
 
 
 def b64(body: dict) -> str:
@@ -112,6 +119,7 @@ class StubSliver:
         self.overrides: dict[str, httpx.Response] = {}  # path prefix -> canned (malformed) response
         self.paid_response: httpx.Response | None = None  # canned answer to a paid request
         self.data_requests: list[httpx.Request] = []  # every request to the x402 data endpoint
+        self.quote_requests: list[httpx.Request] = []  # every custom-slice quote
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -132,9 +140,71 @@ class StubSliver:
         if path.startswith("/api/receipts/"):
             found = self.receipts.get(path.rsplit("/", 1)[1])
             return httpx.Response(200, json=found) if found else httpx.Response(404, json={"detail": "nf"})
+        if path.startswith("/api/resources/") and path.endswith("/slices"):
+            return self.quote(request, path.split("/")[3])
         if path.startswith("/api/resources/") and path.endswith("/data"):
             return self.data_endpoint(request, path.split("/")[3])
         return httpx.Response(404)
+
+    def quote(self, request: httpx.Request, resource_id: str) -> httpx.Response:
+        """Mirrors GET /api/resources/{id}/slices for the berth dataset: 10 rows of October 2026."""
+        self.quote_requests.append(request)
+        listing = self.listings.get(resource_id)
+        if listing is None:
+            return httpx.Response(
+                404, json={"error": {"code": "not_found", "message": "Resource not found."}}
+            )
+        if not (listing.get("custom_slices") or {}).get("available"):
+            error = {"code": "use_full_dataset", "message": "Custom slices are cut from the full dataset.",
+                     "full_dataset_id": FULL_BERTHS}  # fmt: skip
+            return httpx.Response(409, json={"error": error})
+        params = request.url.params
+        if not (params.get("time_start") or params.get("time_end") or params.get("where")):
+            error = {"code": "empty_filter", "message": "Give a time range and/or equality conditions.",
+                     "filterable": {"time": {"column": "date"}, "where": [], "min_rows": 5}}  # fmt: skip
+            return httpx.Response(422, json={"error": error})
+        created = CUSTOM_ID not in self.listings
+        sha256 = hashlib.sha256(CUSTOM_CSV).hexdigest()
+        self.listings[CUSTOM_ID] = {
+            **copy.deepcopy(listing),
+            "id": CUSTOM_ID,
+            "title": "Singapore berth waiting times: custom slice (date 2026-10-01 to 2026-10-10)",
+            "row_count": 10,
+            "coverage": {"time": {"column": "date", "start": "2026-10-01", "end": "2026-10-10"}},
+            "price": {"amount_minor": 24, "currency": "USD"},
+            "content": {"sha256": sha256, "size_bytes": len(CUSTOM_CSV), "format": "text/csv"},
+            "custom_slices": {"available": False},
+            "derived_from": {"id": resource_id, "filter": {}},
+        }
+        self.data[CUSTOM_ID] = CUSTOM_CSV
+        body = {
+            "id": CUSTOM_ID,
+            "created": created,
+            "parent": {"id": resource_id, "title": listing["title"]},
+            "filter": {"time": {"column": "date", "start": "2026-10-01", "end": "2026-10-10"}},
+            "row_count": 10,
+            "columns": listing["columns"],
+            "column_count": len(listing["columns"]),
+            "coverage": self.listings[CUSTOM_ID]["coverage"],
+            "price": {"amount_minor": 24, "currency": "USD"},
+            "payment": {
+                "network": "xrpl:1",
+                "asset": "XRP",
+                "amount_drops": "96000",
+                "drops_per_usd": 400_000,
+            },
+            "validity": {"expires_at": None, "price_fixed": True, "invoice_timeout_seconds": 600},
+            "price_breakdown": {
+                "price_minor": 24,
+                "reference_price_minor": 1200,
+                "reference_rows": 500,
+                "rows": 10,
+            },
+            "seller": listing["seller"],
+            "content": self.listings[CUSTOM_ID]["content"],
+            "purchase": {"method": "GET", "path": f"/api/resources/{CUSTOM_ID}/data", "protocol": "x402"},
+        }
+        return httpx.Response(201 if created else 200, json=body)
 
     def challenge(self, request: httpx.Request, resource_id: str, error: str | None = None) -> httpx.Response:
         listing = self.listings[resource_id]

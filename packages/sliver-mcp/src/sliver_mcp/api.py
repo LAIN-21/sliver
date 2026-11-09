@@ -1,5 +1,6 @@
 """Thin HTTP client for the public Sliver API. Responses are untrusted data."""
 
+import json
 from typing import Any
 
 import httpx
@@ -39,6 +40,43 @@ class SliverApi:
             return self.get_json(f"/api/receipts/{receipt_id}")
         except ApiError:
             return None
+
+    def quote_slice(
+        self,
+        resource_id: str,
+        time_start: str | None = None,
+        time_end: str | None = None,
+        where: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, Any]]:
+        """Ask Sliver to cut a custom slice of a full-dataset listing. Never pays.
+
+        Returns (HTTP status, body): 200/201 with the quote, or an error status with
+        {"error": {"code", "message", ...hints}}. Raises ApiError when Sliver is unreachable or
+        the body is not JSON.
+        """
+        params = {
+            "time_start": time_start,
+            "time_end": time_end,
+            "where": json.dumps(where, sort_keys=True) if where else None,
+        }
+        path = f"/api/resources/{resource_id}/slices"
+        try:
+            response = self.http.get(path, params={k: v for k, v in params.items() if v})
+        except httpx.HTTPError as error:
+            raise ApiError(f"Sliver API at {self.base_url} is unreachable: {error}") from None
+        try:
+            body = response.json()
+        except ValueError:
+            raise ApiError(
+                f"Sliver API answered {response.status_code} with a non-JSON body for {path}"
+            ) from None
+        if not isinstance(body, dict):
+            raise ApiError(f"Sliver API returned an unexpected body for {path}")
+        if response.status_code == 429 and "error" not in body:
+            body = {
+                "error": {"code": "rate_limited", "message": str(body.get("detail", "Too many requests."))}
+            }
+        return response.status_code, body
 
     def data_path(self, resource_id: str) -> str:
         return f"/api/resources/{resource_id}/data"

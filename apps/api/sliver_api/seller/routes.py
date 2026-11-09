@@ -104,7 +104,8 @@ def detail_view(db, dataset: Dataset) -> dict:
     steps = steps_by_dataset(db, [dataset.id])[dataset.id]
     resources = db.scalars(
         select(Resource)
-        .where(Resource.dataset_id == dataset.id)
+        # Buyer-defined custom slices are summarized in the valuation report, not listed here.
+        .where(Resource.dataset_id == dataset.id, Resource.parent_id.is_(None))
         .order_by(Resource.slice_filter.is_not(None), Resource.title)
     ).all()
     reviewer = db.get(User, dataset.reviewed_by) if dataset.reviewed_by else None

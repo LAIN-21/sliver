@@ -22,6 +22,8 @@ WINDOW_SECONDS = 60.0
 MAX_TRACKED = 50_000
 
 PAYMENT_DATA_PATH = re.compile(r"^/api/resources/[^/]+/data/?$")
+# Custom-slice quotes (#39) read a stored dataset and may store a new object.
+SLICE_QUOTE_PATH = re.compile(r"^/api/resources/[^/]+/slices/?$")
 
 
 @dataclass(frozen=True)
@@ -124,6 +126,7 @@ class RateLimitConfig:
     search: Budget
     payment: Budget
     trusted_proxies: tuple[Network, ...] = ()
+    slice_quote: Budget = Budget("slice_quote", 20)
 
 
 def budget_for(scope: Scope, config: RateLimitConfig, upload_path: str) -> Budget | None:
@@ -138,6 +141,8 @@ def budget_for(scope: Scope, config: RateLimitConfig, upload_path: str) -> Budge
         return None
     if path in ("/api/catalog", "/api/catalog/"):
         return config.search
+    if SLICE_QUOTE_PATH.match(path):
+        return config.slice_quote
     if PAYMENT_DATA_PATH.match(path) and "payment-signature" not in Headers(scope=scope):
         # Only challenge (402) issuance: a buyer who already signed a payment is never turned away.
         return config.payment

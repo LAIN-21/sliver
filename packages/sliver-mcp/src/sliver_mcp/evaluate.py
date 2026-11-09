@@ -8,6 +8,11 @@ Per listing:
   with the requested time range, or too few of the need's terms in its metadata).
 - skip: it covers the need but a buyer constraint fails (no budget, over budget, stale).
 - buy: it covers the need and fits the budget.
+
+When the best listing covers much more time than the need (the need is at most
+CUSTOM_SLICE_SHARE of its time span) and a full-dataset listing that offers custom slices also
+covers the need, the report suggests quoting a custom slice with `sliver_quote_slice`: Sliver
+can cut just the requested range, priced per row. Quoting is free and never spends.
 """
 
 import calendar
@@ -16,6 +21,8 @@ from datetime import date
 from typing import Any
 
 MIN_TERM_COVERAGE = 0.6
+# Suggest a custom slice when the need is at most this share of the best listing's time span.
+CUSTOM_SLICE_SHARE = 0.5
 STOPWORDS = frozenset(
     "a about all an and any are as at between by data dataset datasets for from get i in into is it "
     "latest me my need of on or per some the to via vs want we with".split()
@@ -116,7 +123,7 @@ def evaluate_listing(
     if missing_terms:
         gaps.append(f"metadata does not mention required terms: {', '.join(missing_terms)}")
 
-    time_overlap = None
+    time_overlap = need_share = None
     if time_start or time_end:
         window = (listing.get("coverage") or {}).get("time") or {}
         try:
@@ -133,6 +140,8 @@ def evaluate_listing(
             overlap = (min(want_end, have_end) - max(want_start, have_start)).days + 1
             requested = (want_end - want_start).days + 1
             time_overlap = round(max(overlap, 0) / max(requested, 1), 3)
+            # How much of what the listing covers the need actually uses.
+            need_share = round(max(overlap, 0) / max((have_end - have_start).days + 1, 1), 3)
             if overlap <= 0:
                 gaps.append(f"covers {window['start']} to {window['end']}, outside the requested range")
             elif time_overlap < 1:
@@ -171,6 +180,8 @@ def evaluate_listing(
         "term_coverage": round(term_coverage, 3),
         "matched_terms": matched,
         "time_overlap": time_overlap,
+        "need_share": need_share,
+        "custom_slices_available": (listing.get("custom_slices") or {}).get("available") is True,
         "data_age_days": age_days,
         "reasons": gaps + blockers + notes,
     }
@@ -197,11 +208,58 @@ def evaluate(listings: list[dict[str, Any]], *, need: str, today: date, **criter
             "Nothing on Sliver covers this need. Say so plainly and look for another source; "
             "do not buy a near miss."
         )
+    suggestion = custom_slice_suggestion(listings, reports, best, criteria)
+    if suggestion:
+        summary += (
+            f" It covers much more than the need: a custom slice of {suggestion['title']!r} with just "
+            "the requested rows may cost less. Quote it with sliver_quote_slice (free, never spends)."
+        )
     return {
         "need": need,
         "recommendation": recommendation,
         "best": best["resource_id"] if best and recommendation != "look_elsewhere" else None,
         "summary": summary,
+        "custom_slice": suggestion,
         "candidates": reports,
         "spent": 0,
+    }
+
+
+def custom_slice_suggestion(
+    listings: list[dict[str, Any]], reports: list[dict[str, Any]], best: dict | None, criteria: dict
+) -> dict[str, Any] | None:
+    """Arguments for sliver_quote_slice when the best listing covers much more than the need."""
+    if not best or best["verdict"] == "look_elsewhere":
+        return None
+    share = best.get("need_share")
+    if share is None or share > CUSTOM_SLICE_SHARE:
+        return None
+    target = next(
+        (r for r in reports if r["verdict"] != "look_elsewhere" and r["custom_slices_available"]), None
+    )
+    if target is None:
+        return None
+    by_id = {listing.get("id"): listing for listing in listings}
+    where = None
+    if target is not best:
+        # Keep the best sliver's category (a lane, a port) when the full dataset has that column.
+        cut = ((by_id.get(best["resource_id"]) or {}).get("coverage") or {}).get("slice") or {}
+        text_columns = {
+            column.get("name")
+            for column in (by_id.get(target["resource_id"]) or {}).get("columns") or []
+            if column.get("type") == "text"
+        }
+        if cut.get("column") in text_columns and isinstance(cut.get("value"), str):
+            where = {cut["column"]: cut["value"]}
+    return {
+        "tool": "sliver_quote_slice",
+        "resource_id": target["resource_id"],
+        "title": target["title"],
+        "time_start": criteria.get("time_start"),
+        "time_end": criteria.get("time_end"),
+        "where": where,
+        "reason": (
+            f"The need is {share:.0%} of the time span {best['title']!r} covers; "
+            "a custom slice is priced per row."
+        ),
     }

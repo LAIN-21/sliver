@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Computed,
     DateTime,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
@@ -66,6 +68,8 @@ class Dataset(Base):
     reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_reason: Mapped[str | None] = mapped_column(Text)
+    # Whether buyers may quote custom slices of this dataset once it is published (#39).
+    allow_custom_slices: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
 
 class Resource(Base):
@@ -107,6 +111,13 @@ class Resource(Base):
     sample_rows: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     # Private snapshot of the valuation used at publication: inputs, breakdown, price, explanation.
     valuation: Mapped[dict | None] = mapped_column(JSONB)
+    # A buyer-defined custom slice (#39) points at the full-dataset Resource it was cut from. It is
+    # published (so the unchanged x402 path sells it) but unlisted: never in search or categories.
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("resources.id"), index=True)
+    # SHA-256 of the parent id and the normalized filter: identical requests find the same Resource.
+    custom_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+    # The normalized filter of a custom slice: {"time": {...}, "where": {...}}.
+    custom_filter: Mapped[dict | None] = mapped_column(JSONB)
 
     __table_args__ = (
         CheckConstraint("price_minor > 0 AND price_minor <= 100000000", name="resources_price"),
@@ -115,6 +126,11 @@ class Resource(Base):
         Index("resources_search_vector", "search_vector", postgresql_using="gin"),
         Index("resources_column_names", "column_names", postgresql_using="gin"),
     )
+
+
+def is_full_dataset():
+    """SQL: the Resource has no slice filter. Python None is stored as JSON null, not SQL NULL."""
+    return func.coalesce(func.jsonb_typeof(Resource.slice_filter), "null") == "null"
 
 
 class SearchEvent(Base):

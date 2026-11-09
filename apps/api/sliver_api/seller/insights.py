@@ -63,7 +63,7 @@ def insights(db: Session, seller: User, platform_fee_bps: int, today: date) -> d
     ).all()
     delivered = (Payment.status == "delivered", Resource.owner_id == seller.id)
     rows = db.execute(
-        select(Payment, Resource.title)
+        select(Payment, Resource.title, Resource.parent_id)
         .join(Resource, Payment.resource_id == Resource.id)
         .where(*delivered)
         .order_by(Payment.settled_at.desc().nulls_last(), Payment.id)
@@ -117,7 +117,8 @@ def insights(db: Session, seller: User, platform_fee_bps: int, today: date) -> d
         matches = [
             {"id": resource.id, "title": resource.title, "status": resource.status}
             for resource in resources
-            if valuation.matching_demand(listing_text(resource), [item])
+            if resource.parent_id is None  # custom slices answer one buyer, not open demand
+            and valuation.matching_demand(listing_text(resource), [item])
         ]
         demand.append({**item, "matches": matches[:MAX_MATCHES]})
 
@@ -146,17 +147,18 @@ def insights(db: Session, seller: User, platform_fee_bps: int, today: date) -> d
             "net": amounts(net_minor, net_drops),
             # Paid straight to the seller before ADR 0005: no fee, nothing owed.
             "direct_purchases": direct_count,
-            "items": [sale_item(payment, title) for payment, title in rows],
+            "items": [sale_item(payment, title, parent_id) for payment, title, parent_id in rows],
         },
         "demand": {"days": DEMAND_DAYS, "items": demand},
     }
 
 
-def sale_item(payment: Payment, title: str) -> dict:
+def sale_item(payment: Payment, title: str, parent_id: str | None = None) -> dict:
     fee, net, payout = sale_split(payment)
     return {
         "payment_id": payment.id,
-        "resource": {"id": payment.resource_id, "title": title},
+        # A buyer-defined custom slice (#39) names the listing it was cut from.
+        "resource": {"id": payment.resource_id, "title": title, "custom_slice_of": parent_id},
         "amount": {"value": payment.amount, "asset": payment.asset, "usd_minor": payment.price_minor},
         "platform_fee": fee,
         "net": net,

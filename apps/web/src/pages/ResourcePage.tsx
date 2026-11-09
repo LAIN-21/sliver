@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router";
 
 import { ApiError, getResource } from "../api";
 import { formatBytes, formatCategory, formatPrice, formatRange } from "../format";
-import type { PublicResource } from "../types";
+import type { CustomSliceFilter, PublicResource } from "../types";
 
 type State = { kind: "loading" } | { kind: "missing" } | { kind: "error" } | { kind: "ready"; resource: PublicResource };
 
@@ -45,12 +45,23 @@ export default function ResourcePage() {
           {resource.title}
         </h1>
         <p className="mt-3 text-muted">{resource.description}</p>
+        {resource.derived_from ? (
+          <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-sm">
+            A custom slice an agent asked for: {describeFilter(resource.derived_from.filter)}. Cut from{" "}
+            <Link to={`/resources/${resource.derived_from.id}`} className="font-medium text-brand hover:underline">
+              the full dataset
+            </Link>{" "}
+            and priced per row. It is not listed in search.
+          </p>
+        ) : null}
 
         <dl className="mt-6 grid gap-4 rounded-xl border border-line bg-white p-5 sm:grid-cols-2">
           <Fact label="Rows" value={resource.row_count.toLocaleString("en-US")} />
           <Fact label="Format" value={`CSV · ${formatBytes(resource.content.size_bytes)}`} />
           {time ? <Fact label={`Coverage (${time.column})`} value={formatRange(time.start, time.end)} /> : null}
-          {resource.coverage.slice ? (
+          {resource.derived_from ? (
+            <Fact label="Slice" value="Custom slice" />
+          ) : resource.coverage.slice ? (
             <Fact label={`Slice (${resource.coverage.slice.column})`} value={resource.coverage.slice.value} />
           ) : (
             <Fact label="Slice" value="Full dataset" />
@@ -126,12 +137,29 @@ export default function ResourcePage() {
           any agent search, check fit and buy within your budget.
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg bg-ink p-3 text-xs text-white">{MCP_INSTALL}</pre>
+        {resource.custom_slices.available ? (
+          <p className="mt-3 text-sm text-muted">
+            <span className="font-medium text-ink">Custom slices available.</span> Need only some rows? Your agent can quote
+            a slice of this dataset by date range or category with <code>sliver_quote_slice</code>, priced per row and
+            never above this price. Quoting is free.
+          </p>
+        ) : null}
         <p className="mt-3 text-xs text-muted">
           Resource ID <span className="font-mono [overflow-wrap:anywhere]">{resource.id}</span>
         </p>
       </aside>
     </article>
   );
+}
+
+function describeFilter(filter: CustomSliceFilter): string {
+  const parts: string[] = [];
+  if (filter.time) {
+    const { column, start, end } = filter.time;
+    parts.push(start && end ? `${column} ${start} to ${end}` : start ? `${column} from ${start}` : `${column} until ${end}`);
+  }
+  for (const [column, value] of Object.entries(filter.where ?? {})) parts.push(`${column} ${value}`);
+  return parts.join(", ");
 }
 
 function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

@@ -95,3 +95,50 @@ def test_malformed_listing_metadata_is_a_gap_not_a_crash():
     assert freight["verdict"] == "look_elsewhere"
     assert "no readable time coverage to compare with the requested range" in freight["reasons"]
     assert len(report["candidates"]) == len(LISTINGS)
+
+
+# --- custom-slice suggestions (#39) -------------------------------------------------------
+
+LANE = LISTINGS[0]  # a pre-cut lane sliver, 2026-07-06 to 2026-10-26
+FULL_RATES = {
+    **copy.deepcopy(LANE),
+    "id": "55555555-5555-4555-8555-555555555555",
+    "title": "Container spot freight rates from Singapore",
+    "row_count": 200,
+    "coverage": {"time": {"column": "week_start", "start": "2026-07-06", "end": "2026-10-26"}},
+    "price": {"amount_minor": 900, "currency": "USD"},
+    "custom_slices": {"available": True},
+}
+NEED = "container spot freight rates from Singapore"
+
+
+def test_a_sliver_much_larger_than_the_need_suggests_a_custom_slice_of_the_full_dataset():
+    report = run(NEED, [LANE, FULL_RATES], required_terms=["CNSHA"], time_start="2026-10-19",
+                 time_end="2026-10-26", budget_minor=2000)  # fmt: skip
+    assert report["recommendation"] == "buy" and report["best"] == LANE["id"]
+    best = report["candidates"][0]
+    assert best["need_share"] == 0.071 and best["custom_slices_available"] is False  # 8 of 113 days
+    assert report["custom_slice"] == {
+        "tool": "sliver_quote_slice",
+        "resource_id": FULL_RATES["id"],
+        "title": FULL_RATES["title"],
+        "time_start": "2026-10-19",
+        "time_end": "2026-10-26",
+        "where": {"lane": "SGSIN-CNSHA"},
+        "reason": (
+            f"The need is 7% of the time span {LANE['title']!r} covers; a custom slice is priced per row."
+        ),
+    }
+    assert "sliver_quote_slice" in report["summary"]
+
+
+def test_no_custom_slice_is_suggested_when_the_sliver_fits_or_nothing_offers_one():
+    close = run(NEED, [LANE, FULL_RATES], time_start="2026-08", time_end="2026-10", budget_minor=2000)
+    assert close["candidates"][0]["need_share"] > 0.5 and close["custom_slice"] is None
+    no_range = run(NEED, [LANE, FULL_RATES], budget_minor=2000)
+    assert no_range["custom_slice"] is None
+    not_offered = {**FULL_RATES, "custom_slices": {"available": False}}
+    narrow = run(NEED, [LANE, not_offered], time_start="2026-10-19", time_end="2026-10-26", budget_minor=2000)
+    assert narrow["custom_slice"] is None
+    nothing = run("air-cargo rates Changi to Frankfurt", [LANE, FULL_RATES], time_start="2026-10-19")
+    assert nothing["custom_slice"] is None

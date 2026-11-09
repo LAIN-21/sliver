@@ -254,6 +254,42 @@ def value(inputs: ValuationInputs) -> Valuation:
     )
 
 
+# --- buyer-defined custom slices (#39) -------------------------------------------------------
+
+# A custom slice never costs less than this (unless its parent is cheaper still).
+CUSTOM_FLOOR_MINOR = 10
+RATE_PLACES = Decimal("0.0001")
+
+
+def custom_slice_price(reference_price_minor: int, reference_rows: int, rows: int) -> dict:
+    """The price of a custom slice of `rows` rows cut from a parent sold at `reference_price_minor`.
+
+        price = min(parent price, max(floor, parent price ÷ parent rows × rows))
+
+    The parent's published price is the reference (the seller's override when they chose one),
+    spread evenly over the rows its valuation priced. The result is monotone in `rows` (fewer
+    rows never cost more), never above the parent's price, and inside the database bounds.
+    """
+    if reference_rows <= 0 or not 0 < rows <= reference_rows:
+        raise ValueError("a custom slice needs between 1 and the parent's rows")
+    reference = max(MIN_PRICE_MINOR, min(MAX_PRICE_MINOR, int(reference_price_minor)))
+    rate = Decimal(reference) / Decimal(reference_rows)
+    prorated = int((rate * rows).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    floor = min(CUSTOM_FLOOR_MINOR, reference)
+    price = max(MIN_PRICE_MINOR, min(reference, max(floor, prorated)))
+    return {
+        "price_minor": price,
+        "reference_price_minor": reference,
+        "reference_rows": reference_rows,
+        "rows": rows,
+        "rate_minor_per_row": str(rate.quantize(RATE_PLACES, rounding=ROUND_HALF_UP)),
+        "prorated_minor": prorated,
+        "floor_minor": floor,
+        "cap_minor": reference,
+        "rule": "min(parent price, max(floor, parent price / parent rows × rows))",
+    }
+
+
 # --- matching unmet demand to a sliver ------------------------------------------------------
 
 # Words too common in searches to say anything about what a buyer wants.

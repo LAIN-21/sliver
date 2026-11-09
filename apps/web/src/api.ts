@@ -148,8 +148,9 @@ export function publishDataset(
   prices: Record<string, number>,
   sampleRows: number[],
   suggested: Record<string, number>,
+  allowCustomSlices: boolean,
 ): Promise<SellerDatasetDetail> {
-  const body = JSON.stringify({ prices, sample_rows: sampleRows, suggested });
+  const body = JSON.stringify({ prices, sample_rows: sampleRows, suggested, allow_custom_slices: allowCustomSlices });
   const init = { method: "POST", body, headers: { "Content-Type": "application/json" } };
   return request<SellerDatasetDetail>(`/seller/datasets/${encodeURIComponent(id)}/publish`, init);
 }
