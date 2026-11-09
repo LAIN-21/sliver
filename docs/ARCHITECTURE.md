@@ -19,13 +19,14 @@ This document records system-level decisions, assumptions, and open questions. P
 - Background jobs will be PostgreSQL rows claimed with `FOR UPDATE SKIP LOCKED`; there is no queue service. The worker does not claim jobs yet; claiming arrives with the first pipeline stage (#13).
 - A Resource ("sliver") is either a whole dataset or one slice of it (one value of a column, or one calendar month of a date column). Each Resource is stored as its own immutable CSV object with its own SHA-256, so delivery and integrity checks never touch the rest of the dataset.
 - Public discovery serializes Resources through one allow-list (`catalog/public.py`) and searches them with PostgreSQL full-text search, matching any query term and ranking by relevance. See [agents/catalog.md](agents/catalog.md).
+- Resources are bought with x402 v2 on XRPL Testnet: `GET /api/resources/{id}/data` answers 402, buyers pay the seller directly with a presigned Payment, a facilitator (t54 by default) settles it, and Sliver independently checks the ledger before delivering. Sliver never signs or holds funds. See [ADR 0004](adr/0004-x402-payments-on-xrpl.md) and [agents/transactions.md](agents/transactions.md).
 - Every catalog query records an anonymous search event. Queries that return nothing are exposed as unmet demand (`GET /api/demand`) for sellers.
 
 ## Current assumptions
 
 - CSV, JSON, and Parquet are likely early source formats. Support does not exist until it is implemented.
 - Initial pricing is expected to consider coverage and value. The exact formula is not finalized.
-- x402 is the intended mechanism for machine-to-machine payment gating, subject to a later transaction ADR.
+- Prices are set in USD and converted to XRP drops at a fixed, disclosed demo rate.
 
 ## Open questions
 
@@ -36,6 +37,6 @@ This document records system-level decisions, assumptions, and open questions. P
 - Resource metadata schema
 - Exact pricing formula
 - Whether the four conceptual responsibilities become packages, modules, services, or deployables
-- Exact x402/XRPL integration and operational architecture, including transaction lifecycle, enforcement location, reconciliation, payout model, and wallet/key custody
+- Marketplace fees, payouts beyond direct payment, refunds, and mainnet operation
 
 Record significant answers as ADRs. See [adr/README.md](adr/README.md).

@@ -4,7 +4,7 @@ ensure-env = test -f .env || cp .env.example .env
 
 EXAMPLES = -v $(CURDIR)/examples:/examples:ro
 
-.PHONY: doctor install dev-start dev-stop dev-reset ps logs test lint migrate seed
+.PHONY: doctor install dev-start dev-stop dev-reset ps logs test lint migrate seed wallets smoke-testnet
 
 doctor:
 	sh scripts/doctor.sh
@@ -49,3 +49,11 @@ migrate:
 seed:
 	@$(ensure-env)
 	$(COMPOSE) run --rm $(EXAMPLES) api python -m sliver_api.seed /examples/datasets
+
+wallets:
+	@$(ensure-env)
+	$(COMPOSE) run --rm -v $(CURDIR):/repo api python -m sliver_api.payments.wallets /repo/.env /repo/examples/datasets/manifest.toml
+
+smoke-testnet:
+	@$(ensure-env)
+	$(COMPOSE) run --rm -v $(CURDIR)/.env:/repo/.env:ro api python -m sliver_api.payments.smoke /repo/.env http://api:8000

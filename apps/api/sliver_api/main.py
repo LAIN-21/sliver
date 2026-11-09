@@ -11,6 +11,9 @@ from starlette.concurrency import run_in_threadpool
 from .catalog.routes import router as catalog_router
 from .config import Settings, get_settings
 from .db import database_ready, make_engine, make_session_factory
+from .payments.adapters import Facilitator, HttpFacilitator, Ledger, XrplLedger
+from .payments.routes import router as payments_router
+from .payments.service import PurchaseService
 from .storage import ObjectStore, S3Store
 
 logger = logging.getLogger(__name__)
@@ -21,11 +24,15 @@ def create_app(
     *,
     engine: Engine | None = None,
     store: ObjectStore | None = None,
+    facilitator: Facilitator | None = None,
+    ledger: Ledger | None = None,
 ) -> FastAPI:
-    """Build the app. `engine` and `store` are explicit seams for isolated tests."""
+    """Build the app. `engine`, `store`, `facilitator` and `ledger` are explicit seams for tests."""
     settings = settings or get_settings()
     engine = engine if engine is not None else make_engine(settings.database_url)
     store = store if store is not None else S3Store(settings)
+    facilitator = facilitator if facilitator is not None else HttpFacilitator(settings.facilitator_url)
+    ledger = ledger if ledger is not None else XrplLedger(settings.xrpl_rpc_url)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -42,8 +49,10 @@ def create_app(
     app.state.engine = engine
     app.state.sessions = make_session_factory(engine)
     app.state.store = store
+    app.state.purchases = PurchaseService(settings, store, facilitator, ledger)
 
     app.include_router(catalog_router)
+    app.include_router(payments_router)
 
     @app.get("/api/health")
     def health() -> JSONResponse:

@@ -119,3 +119,32 @@ class SearchEvent(Base):
     result_count: Mapped[int] = mapped_column(Integer)
     top_score: Mapped[float] = mapped_column(Float, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Payment(Base):
+    """One x402 invoice for one Resource: issued on a 402, settled at most once on the ledger."""
+
+    __tablename__ = "payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    invoice_id: Mapped[str] = mapped_column(String(64), unique=True)
+    resource_id: Mapped[str] = mapped_column(ForeignKey("resources.id"), index=True)
+    pay_to: Mapped[str] = mapped_column(String(35))
+    amount: Mapped[str] = mapped_column(String(32))
+    asset: Mapped[str] = mapped_column(String(40))
+    network: Mapped[str] = mapped_column(String(16))
+    price_minor: Mapped[int] = mapped_column(Integer)
+    # The exact PaymentRequirements issued in the 402; a payment must accept them unchanged.
+    requirements: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(16), default="required", index=True)
+    tx_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    payer: Mapped[str | None] = mapped_column(String(35))
+    ledger_index: Mapped[int | None] = mapped_column(Integer)
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('required', 'settling', 'delivered', 'failed')", name="payments_status"),
+    )
