@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 PROMPTS = Path(__file__).parent / "prompts"
 REVIEW_PROMPT = "dataset_review.v1"
 RESEARCH_PROMPT = "dataset_research.v1"
+EXPLANATION_PROMPT = "valuation_explanation.v1"
 MAX_SAMPLE_ROWS = 20
 MAX_TOKENS = 16_000
 # A web-search turn may pause; continue it at most this many times.
@@ -160,6 +161,15 @@ def cache_key(prompt: Prompt, model: str, sha256: str) -> str:
     return f"ai-cache/{prompt.name}/{slug(model)}/{sha256}.json"
 
 
+def read_cache(store: ObjectStore, prompt: Prompt, model: str, sha256: str) -> Answer | None:
+    """A cached answer, unvalidated, or None for a missing or unreadable entry (a miss)."""
+    try:
+        record = json.loads(store.get(cache_key(prompt, model, sha256)))
+        return Answer(record["output"], record["model"], record.get("request_id"), record["search_urls"])
+    except Exception:
+        return None
+
+
 def ask_cached(
     store: ObjectStore,
     ai: Engine,
@@ -175,11 +185,7 @@ def ask_cached(
     rejected answer raises `Unavailable` and the next run asks again.
     """
     key = cache_key(prompt, ai.model, sha256)
-    try:
-        record = json.loads(store.get(key))
-        cached = Answer(record["output"], record["model"], record.get("request_id"), record["search_urls"])
-    except Exception:
-        cached = None  # a missing or unreadable cache entry is a miss
+    cached = read_cache(store, prompt, ai.model, sha256)
     if cached is not None:
         try:
             return validate(cached), cached, True

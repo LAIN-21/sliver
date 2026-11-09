@@ -24,6 +24,7 @@ const DATASET_LABELS: Record<DatasetStatus, [string, string]> = {
   review: ["Waiting for review", "bg-amber-50 text-amber-800"],
   rejected: ["Rejected", "bg-red-50 text-red-800"],
   accepted: ["Accepted, ready for pricing", "bg-emerald-50 text-emerald-800"],
+  published: ["Published", "bg-brand-soft text-brand"],
 };
 
 const SEVERITY_STYLES: Record<Finding["severity"], string> = {

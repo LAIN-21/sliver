@@ -45,13 +45,18 @@ function Workspace({ account }: { account: Account }) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title={seller ? "Your datasets" : "Review queue"}>
           {seller
-            ? "Every upload is validated, profiled, scanned for personal data, checked for duplicates, reviewed by AI and packaged into slivers. Clean datasets are accepted automatically; the rest go to a reviewer."
+            ? "Every upload is validated, profiled, scanned for personal data, checked for duplicates, reviewed by AI and packaged into slivers. Clean datasets are accepted automatically; the rest go to a reviewer. Accepted datasets get an explainable suggested price; you publish them from the dataset page."
             : "Datasets the pipeline could not accept on its own. Approve or reject each one with a reason."}
         </PageHeader>
         {seller ? (
-          <Link to="/sell/upload" className={PRIMARY_BUTTON}>
-            Upload a dataset
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link to="/sell/insights" className="rounded-lg border border-line bg-white px-4 py-2 font-medium hover:border-brand">
+              Demand and earnings
+            </Link>
+            <Link to="/sell/upload" className={PRIMARY_BUTTON}>
+              Upload a dataset
+            </Link>
+          </div>
         ) : null}
       </div>
       {state.kind === "loading" ? <p className="text-muted">Loading…</p> : null}

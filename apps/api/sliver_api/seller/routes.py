@@ -11,6 +11,8 @@ from ..auth.deps import CurrentReviewer, CurrentSeller, CurrentUser
 from ..deps import DB
 from ..models import Dataset, PipelineStep, Resource, User
 from ..pipeline.table import MAX_FILE_BYTES
+from . import pricing
+from .insights import insights
 from .uploads import (
     NotReviewable,
     ReviewDecision,
@@ -121,3 +123,60 @@ def review_dataset(
     if dataset is None:
         raise HTTPException(status_code=404, detail="Dataset not found.")
     return detail_view(db, dataset)
+
+
+def seller_dataset(db, seller, dataset_id: str) -> Dataset:
+    dataset = pricing.owned_dataset(db, seller, dataset_id)
+    if dataset is None:
+        # Other sellers' datasets answer exactly like missing ones.
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    return dataset
+
+
+NOT_READY = "This dataset is not ready for pricing: it must be accepted (automatically or by a reviewer)."
+STORAGE_DOWN = "The stored dataset could not be read. Try again shortly."
+
+
+@router.get("/datasets/{dataset_id}/valuation")
+def get_valuation(
+    dataset_id: Annotated[str, Path(max_length=36)], request: Request, db: DB, seller: CurrentSeller
+) -> dict:
+    """The suggested price, range and breakdown per sliver, the explanation and sample-row candidates."""
+    dataset = seller_dataset(db, seller, dataset_id)
+    try:
+        return pricing.report(db, request.app.state.store, dataset)
+    except pricing.NotPublishable:
+        raise HTTPException(status_code=409, detail=NOT_READY) from None
+    except pricing.DataUnavailable:
+        raise HTTPException(status_code=503, detail=STORAGE_DOWN) from None
+
+
+@router.post("/datasets/{dataset_id}/publish")
+def publish_dataset(
+    dataset_id: Annotated[str, Path(max_length=36)],
+    form: pricing.PublishForm,
+    request: Request,
+    db: DB,
+    seller: CurrentSeller,
+) -> dict:
+    """Publish every draft sliver at its suggested price or the seller's override.
+
+    Sample rows stay private unless listed in `sample_rows`; rows with flagged values are refused.
+    """
+    try:
+        dataset = pricing.publish(db, request.app.state.store, seller, dataset_id, form)
+    except pricing.NotPublishable:
+        raise HTTPException(status_code=409, detail=NOT_READY) from None
+    except pricing.InvalidSelection as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+    except pricing.DataUnavailable:
+        raise HTTPException(status_code=503, detail=STORAGE_DOWN) from None
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    return detail_view(db, dataset)
+
+
+@router.get("/insights")
+def seller_insights(db: DB, seller: CurrentSeller) -> dict:
+    """Unmet buyer demand and the signed-in seller's earnings, with transaction links."""
+    return insights(db, seller)

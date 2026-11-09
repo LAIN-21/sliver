@@ -2,7 +2,9 @@
 
 It is an explicit allow-list: new model fields stay private until they are added here on
 purpose. Discovery must never expose protected data (docs/PRODUCT.md), so object keys,
-filenames, raw rows, owner emails and rights statements are never included.
+filenames, raw rows, owner emails and rights statements are never included. The one exception
+to "no raw rows" is `sample_rows`: rows the seller explicitly selected to make public when
+publishing (#15). It is empty unless they chose some, and the privacy-flagged rows are refused.
 """
 
 from datetime import datetime
@@ -40,5 +42,7 @@ def public_resource(resource: Resource, seller_name: str, provenance: dict) -> d
         "provenance": {key: provenance[key] for key in PUBLIC_PROVENANCE_FIELDS if key in provenance},
         # Lets a buyer verify the bytes it receives after paying; reveals nothing about content.
         "content": {"sha256": resource.sha256, "size_bytes": resource.size_bytes, "format": "text/csv"},
+        # Only rows the seller selected for public view; column order matches `columns`.
+        "sample_rows": [[str(cell) for cell in row] for row in resource.sample_rows or []],
         "published_at": iso(resource.published_at),
     }

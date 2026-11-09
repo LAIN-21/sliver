@@ -22,6 +22,7 @@ PUBLIC_KEYS = {
     "seller",
     "provenance",
     "content",
+    "sample_rows",
     "published_at",
 }
 
@@ -114,6 +115,8 @@ def test_public_responses_only_contain_allow_listed_metadata(seeded, client, ses
     for item in [*listing["items"], detail]:
         assert set(item) - {"relevance"} == PUBLIC_KEYS
         assert set(item["provenance"]) <= {"source", "method", "collected_at"}
+        # Rows are public only when a seller selects them at publication (tests/test_valuation.py).
+        assert item["sample_rows"] == []
     text = json.dumps([listing, detail])
     for value in private_values:
         assert value not in text

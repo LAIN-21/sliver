@@ -39,6 +39,14 @@ Additional constraints for seller accounts, uploads and the inspection pipeline 
 - `ai.engine()` returns None without `ANTHROPIC_API_KEY`; every AI stage must then complete with the deterministic fallback, and tests must never reach the API.
 - Validate model output before use. A slice column must pass the rules in `ai_review.choose_slice` (a non-personal category column, or a date column cut by month); public text must pass the leak guard; research sources must be URLs the web search returned.
 - Public text (title, description, tags, category) may name columns and values of low-cardinality, non-personal category columns, dates and counts, never other cell values. Keep the guard in `package` as the last check before Resources are created.
-- Each sliver is written once under `resources/<owner>/<dataset>/<slice>.csv` with its own SHA-256. Packaged Resources stay `draft` (accepted) or `review` (queued) and carry the placeholder price until #15; this area never publishes or prices.
+- Each sliver is written once under `resources/<owner>/<dataset>/<slice>.csv` with its own SHA-256. Packaged Resources stay `draft` (accepted) or `review` (queued) and carry the placeholder price; the pipeline never publishes or prices. Only the owning seller publishes, through `seller/pricing.py`.
 - `decide` uses deterministic rules only. Model output may send a dataset to a reviewer, never accept one. Keep blocking findings (any `high`, unfinished stages, `medium` privacy and near-duplicate findings, `medium` AI sensitivity concerns) out of automatic acceptance.
 - Reviewer decisions need a reason, apply only to datasets in `review`, and are recorded on the dataset (`reviewed_by`, `reviewed_at`, `review_reason`).
+
+## Valuation and publication
+
+- `valuation.py` stays pure: no database, clock, randomness, network or model calls. Same inputs, same output. Every factor is rounded before multiplying and appears in the breakdown with its inputs, and prices are clamped to the `resources.price_minor` bounds. `seller/pricing.py` gathers the inputs.
+- Claude never chooses or changes a number. It receives only the computed prices, factors and their short reasons (counts and aggregates, never rows, cell values, provenance or search texts). Its explanation is discarded for the template when it contains any number that is not in its input. Without a key, or when the call fails, the template is used; publishing never calls Claude.
+- Only the owning seller sees a valuation or publishes, and only for `accepted` datasets (automatic or reviewer-approved). Other sellers get 404, reviewers 403. Prices are fixed once published; repricing is out of scope.
+- Sample rows are private by default. A row becomes public only when the seller selects it at publication, at most `MAX_PUBLIC_SAMPLE_ROWS` (5), and never when it holds a value in a privacy-flagged column or a value a privacy detector matches. Candidates shown to the seller redact those cells. Keep `tests/test_valuation.py` passing.
+- Earnings on the insights page are the signed-in seller's own delivered purchases only.

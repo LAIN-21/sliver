@@ -15,8 +15,8 @@ from ..pipeline.registry import STAGES_BY_NAME
 from ..pipeline.table import MAX_FILE_BYTES
 from ..storage import ObjectStore
 
-# Datasets a reviewer may see: waiting for review or accepted, plus any a reviewer has decided.
-REVIEW_STATUSES = ("review", "accepted")
+# Datasets a reviewer may see: waiting for review, accepted or published, plus any a reviewer decided.
+REVIEW_STATUSES = ("review", "accepted", "published")
 ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 TRUE_VALUES = ("true", "on", "yes", "1")
 
@@ -191,6 +191,9 @@ def private_resource(resource: Resource) -> dict:
         "sha256": resource.sha256,
         "size_bytes": resource.size_bytes,
         "status": resource.status,
+        "price_minor": resource.price_minor if resource.status == "published" else None,
+        "published_at": iso(resource.published_at),
+        "sample_rows": len(resource.sample_rows or []),
     }
 
 
@@ -198,7 +201,7 @@ def review_view(dataset: Dataset, reviewer: User | None) -> dict | None:
     if dataset.reviewed_at is None:
         return None
     return {
-        "decision": "approved" if dataset.status == "accepted" else "rejected",
+        "decision": "rejected" if dataset.status == "rejected" else "approved",
         "reason": dataset.review_reason,
         "reviewer": reviewer.display_name if reviewer else None,
         "decided_at": iso(dataset.reviewed_at),

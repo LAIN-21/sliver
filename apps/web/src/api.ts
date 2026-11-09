@@ -10,6 +10,8 @@ import type {
   PurchaseTimeline,
   SellerDataset,
   SellerDatasetDetail,
+  SellerInsights,
+  ValuationReport,
 } from "./types";
 
 export class ApiError extends Error {
@@ -131,6 +133,21 @@ export function uploadDataset(form: FormData): Promise<SellerDataset> {
 export function reviewDataset(id: string, decision: "approve" | "reject", reason: string): Promise<SellerDatasetDetail> {
   const init = { method: "POST", body: JSON.stringify({ decision, reason }), headers: { "Content-Type": "application/json" } };
   return request<SellerDatasetDetail>(`/seller/datasets/${encodeURIComponent(id)}/review`, init);
+}
+
+export function getValuation(id: string, signal?: AbortSignal): Promise<ValuationReport> {
+  return request<ValuationReport>(`/seller/datasets/${encodeURIComponent(id)}/valuation`, { signal });
+}
+
+/** `prices` holds only the seller's overrides (USD cents); every other sliver takes the suggestion. */
+export function publishDataset(id: string, prices: Record<string, number>, sampleRows: number[]): Promise<SellerDatasetDetail> {
+  const body = JSON.stringify({ prices, sample_rows: sampleRows });
+  const init = { method: "POST", body, headers: { "Content-Type": "application/json" } };
+  return request<SellerDatasetDetail>(`/seller/datasets/${encodeURIComponent(id)}/publish`, init);
+}
+
+export function getInsights(signal?: AbortSignal): Promise<SellerInsights> {
+  return request<SellerInsights>("/seller/insights", { signal });
 }
 
 export function getActivity(

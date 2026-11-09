@@ -78,7 +78,43 @@ export default function ResourcePage() {
             </tbody>
           </table>
         </div>
-        <p className="mt-3 text-sm text-muted">Listings never include the data itself; it is delivered after payment.</p>
+        {resource.sample_rows.length ? (
+          <>
+            <h2 className="mt-8 text-lg font-semibold">Sample rows</h2>
+            <p className="mt-1 text-sm text-muted">
+              The seller chose to show {resource.sample_rows.length === 1 ? "this row" : `these ${resource.sample_rows.length} rows`}{" "}
+              publicly. The rest is delivered after payment.
+            </p>
+            <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-white">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-surface text-muted">
+                  <tr>
+                    {resource.columns.map((column) => (
+                      <th key={column.name} className="px-4 py-2 font-mono font-medium">
+                        {column.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {resource.sample_rows.map((row, index) => (
+                    <tr key={index} className="border-t border-line">
+                      {row.map((cell, position) => (
+                        <td key={position} className="px-4 py-2 whitespace-nowrap">
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
+        <p className="mt-3 text-sm text-muted">
+          Listings never include the data itself, except sample rows a seller chose to make public; it is delivered after
+          payment.
+        </p>
       </div>
 
       <aside className="h-fit min-w-0 rounded-xl border border-line bg-white p-5 lg:sticky lg:top-6">

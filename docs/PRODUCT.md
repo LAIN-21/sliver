@@ -19,7 +19,7 @@ The initial seller focus is structured uploaded datasets.
 
 Enterprise and API integrations are a later input mechanism into the same Resource marketplace.
 
-Pricing is expected to consider both coverage and value. The formula is an architecture question, not a product invariant. See [ARCHITECTURE.md](ARCHITECTURE.md).
+Pricing considers both coverage and value. Sliver suggests an explainable price for each sliver from its quality, uniqueness against the catalog, unmet buyer demand, public availability and coverage; the seller accepts or overrides it before publishing. The formula is an architecture question, not a product invariant. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Conceptual flows
 
