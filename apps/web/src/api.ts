@@ -1,5 +1,7 @@
 // Same-origin API client. In development Vite proxies /api to the FastAPI service.
 
+import type { CatalogPage, CategoryCount, PublicResource } from "./types";
+
 export class ApiError extends Error {
   readonly status: number;
 
@@ -32,6 +34,24 @@ export type HealthStatus = {
 
 function isHealth(body: unknown): body is HealthStatus {
   return typeof body === "object" && body !== null && "checks" in body;
+}
+
+export type CatalogFilters = { q?: string; category?: string; maxPriceMinor?: number };
+
+export function searchCatalog(filters: CatalogFilters, signal?: AbortSignal): Promise<CatalogPage> {
+  const params = new URLSearchParams({ limit: "50" });
+  if (filters.q) params.set("q", filters.q);
+  if (filters.category) params.set("category", filters.category);
+  if (filters.maxPriceMinor) params.set("max_price_minor", String(filters.maxPriceMinor));
+  return request<CatalogPage>(`/catalog?${params}`, { signal });
+}
+
+export async function getCategories(signal?: AbortSignal): Promise<CategoryCount[]> {
+  return (await request<{ items: CategoryCount[] }>("/catalog/categories", { signal })).items;
+}
+
+export function getResource(id: string, signal?: AbortSignal): Promise<PublicResource> {
+  return request<PublicResource>(`/catalog/${encodeURIComponent(id)}`, { signal });
 }
 
 export function getHealth(signal?: AbortSignal): Promise<HealthStatus> {

@@ -93,6 +93,8 @@ services:
     build:
       context: ./apps/web
     image: sliver-web:dev
+    # Vite can exit when an editor replaces a file mid-read through the bind mount; come back up.
+    restart: unless-stopped
     environment:
       VITE_API_PROXY_TARGET: http://api:8000
     ports:

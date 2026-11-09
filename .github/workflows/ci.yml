@@ -169,6 +169,15 @@ jobs:
           make test
           make lint
 
+      - name: Seed the demo catalog twice
+        run: |
+          set -euo pipefail
+          make seed
+          make seed
+          total=$(curl --fail --silent http://127.0.0.1:8000/api/catalog | python3 -c 'import json, sys; print(json.load(sys.stdin)["total"])')
+          echo "published resources: $total"
+          test "$total" -eq 21
+
       - name: Health degrades when storage is down
         run: |
           set -euo pipefail

@@ -1,0 +1,201 @@
+month,hs_chapter,hs_description,transport_mode,shipments,median_clearance_hours
+2026-01,84,Machinery and mechanical appliances,sea,280,33.5
+2026-01,84,Machinery and mechanical appliances,air,698,6.7
+2026-01,85,Electrical machinery and equipment,sea,695,25.0
+2026-01,85,Electrical machinery and equipment,air,262,7.5
+2026-01,27,Mineral fuels and oils,sea,1556,25.8
+2026-01,27,Mineral fuels and oils,air,751,7.3
+2026-01,39,Plastics and articles thereof,sea,1776,25.2
+2026-01,39,Plastics and articles thereof,air,495,6.8
+2026-01,30,Pharmaceutical products,sea,2140,50.7
+2026-01,30,Pharmaceutical products,air,532,9.3
+2026-01,87,Vehicles other than railway,sea,446,34.8
+2026-01,87,Vehicles other than railway,air,793,5.9
+2026-01,90,Optical and medical instruments,sea,1669,30.0
+2026-01,90,Optical and medical instruments,air,295,6.0
+2026-01,61,Knitted apparel,sea,1447,34.0
+2026-01,61,Knitted apparel,air,307,7.3
+2026-01,22,Beverages and spirits,sea,143,41.0
+2026-01,22,Beverages and spirits,air,786,9.9
+2026-01,71,Precious stones and metals,sea,1467,37.8
+2026-01,71,Precious stones and metals,air,80,10.5
+2026-02,84,Machinery and mechanical appliances,sea,1774,26.4
+2026-02,84,Machinery and mechanical appliances,air,835,6.6
+2026-02,85,Electrical machinery and equipment,sea,2363,29.7
+2026-02,85,Electrical machinery and equipment,air,472,5.1
+2026-02,27,Mineral fuels and oils,sea,904,29.4
+2026-02,27,Mineral fuels and oils,air,386,6.9
+2026-02,39,Plastics and articles thereof,sea,1714,25.0
+2026-02,39,Plastics and articles thereof,air,340,9.1
+2026-02,30,Pharmaceutical products,sea,2334,44.1
+2026-02,30,Pharmaceutical products,air,662,8.1
+2026-02,87,Vehicles other than railway,sea,2348,29.0
+2026-02,87,Vehicles other than railway,air,791,7.7
+2026-02,90,Optical and medical instruments,sea,974,35.8
+2026-02,90,Optical and medical instruments,air,865,6.9
+2026-02,61,Knitted apparel,sea,1669,26.3
+2026-02,61,Knitted apparel,air,776,6.1
+2026-02,22,Beverages and spirits,sea,2295,38.7
+2026-02,22,Beverages and spirits,air,248,10.3
+2026-02,71,Precious stones and metals,sea,598,37.8
+2026-02,71,Precious stones and metals,air,678,10.3
+2026-03,84,Machinery and mechanical appliances,sea,1463,27.7
+2026-03,84,Machinery and mechanical appliances,air,457,6.5
+2026-03,85,Electrical machinery and equipment,sea,1558,36.0
+2026-03,85,Electrical machinery and equipment,air,877,7.4
+2026-03,27,Mineral fuels and oils,sea,1136,37.5
+2026-03,27,Mineral fuels and oils,air,685,8.8
+2026-03,39,Plastics and articles thereof,sea,884,39.6
+2026-03,39,Plastics and articles thereof,air,527,8.8
+2026-03,30,Pharmaceutical products,sea,1224,43.5
+2026-03,30,Pharmaceutical products,air,623,9.4
+2026-03,87,Vehicles other than railway,sea,1686,23.7
+2026-03,87,Vehicles other than railway,air,795,6.6
+2026-03,90,Optical and medical instruments,sea,1067,32.7
+2026-03,90,Optical and medical instruments,air,280,6.2
+2026-03,61,Knitted apparel,sea,909,30.2
+2026-03,61,Knitted apparel,air,499,4.9
+2026-03,22,Beverages and spirits,sea,147,43.7
+2026-03,22,Beverages and spirits,air,558,11.7
+2026-03,71,Precious stones and metals,sea,1255,43.5
+2026-03,71,Precious stones and metals,air,364,9.7
+2026-04,84,Machinery and mechanical appliances,sea,1707,22.9
+2026-04,84,Machinery and mechanical appliances,air,763,7.7
+2026-04,85,Electrical machinery and equipment,sea,251,31.7
+2026-04,85,Electrical machinery and equipment,air,227,7.0
+2026-04,27,Mineral fuels and oils,sea,1628,24.9
+2026-04,27,Mineral fuels and oils,air,458,7.9
+2026-04,39,Plastics and articles thereof,sea,2167,32.7
+2026-04,39,Plastics and articles thereof,air,316,6.5
+2026-04,30,Pharmaceutical products,sea,1466,43.5
+2026-04,30,Pharmaceutical products,air,427,9.7
+2026-04,87,Vehicles other than railway,sea,2070,26.5
+2026-04,87,Vehicles other than railway,air,191,7.2
+2026-04,90,Optical and medical instruments,sea,343,30.8
+2026-04,90,Optical and medical instruments,air,363,6.2
+2026-04,61,Knitted apparel,sea,1641,25.3
+2026-04,61,Knitted apparel,air,161,8.0
+2026-04,22,Beverages and spirits,sea,2144,34.4
+2026-04,22,Beverages and spirits,air,113,10.4
+2026-04,71,Precious stones and metals,sea,1376,38.3
+2026-04,71,Precious stones and metals,air,426,10.4
+2026-05,84,Machinery and mechanical appliances,sea,1700,32.3
+2026-05,84,Machinery and mechanical appliances,air,272,8.1
+2026-05,85,Electrical machinery and equipment,sea,479,39.3
+2026-05,85,Electrical machinery and equipment,air,631,5.7
+2026-05,27,Mineral fuels and oils,sea,1473,35.1
+2026-05,27,Mineral fuels and oils,air,854,7.3
+2026-05,39,Plastics and articles thereof,sea,1939,28.9
+2026-05,39,Plastics and articles thereof,air,773,6.5
+2026-05,30,Pharmaceutical products,sea,1855,50.7
+2026-05,30,Pharmaceutical products,air,260,9.5
+2026-05,87,Vehicles other than railway,sea,876,27.6
+2026-05,87,Vehicles other than railway,air,204,5.9
+2026-05,90,Optical and medical instruments,sea,2050,25.5
+2026-05,90,Optical and medical instruments,air,41,7.4
+2026-05,61,Knitted apparel,sea,742,26.1
+2026-05,61,Knitted apparel,air,804,7.7
+2026-05,22,Beverages and spirits,sea,1990,41.5
+2026-05,22,Beverages and spirits,air,93,8.1
+2026-05,71,Precious stones and metals,sea,1002,49.9
+2026-05,71,Precious stones and metals,air,847,10.0
+2026-06,84,Machinery and mechanical appliances,sea,1249,32.6
+2026-06,84,Machinery and mechanical appliances,air,92,6.8
+2026-06,85,Electrical machinery and equipment,sea,1050,26.8
+2026-06,85,Electrical machinery and equipment,air,771,8.0
+2026-06,27,Mineral fuels and oils,sea,995,25.9
+2026-06,27,Mineral fuels and oils,air,715,9.9
+2026-06,39,Plastics and articles thereof,sea,1251,33.6
+2026-06,39,Plastics and articles thereof,air,692,5.9
+2026-06,30,Pharmaceutical products,sea,1738,43.6
+2026-06,30,Pharmaceutical products,air,305,8.8
+2026-06,87,Vehicles other than railway,sea,197,34.2
+2026-06,87,Vehicles other than railway,air,98,7.7
+2026-06,90,Optical and medical instruments,sea,743,26.9
+2026-06,90,Optical and medical instruments,air,498,6.4
+2026-06,61,Knitted apparel,sea,2316,29.1
+2026-06,61,Knitted apparel,air,565,7.9
+2026-06,22,Beverages and spirits,sea,335,40.3
+2026-06,22,Beverages and spirits,air,528,9.7
+2026-06,71,Precious stones and metals,sea,212,46.7
+2026-06,71,Precious stones and metals,air,791,9.4
+2026-07,84,Machinery and mechanical appliances,sea,1864,30.1
+2026-07,84,Machinery and mechanical appliances,air,296,4.7
+2026-07,85,Electrical machinery and equipment,sea,2227,24.4
+2026-07,85,Electrical machinery and equipment,air,659,7.5
+2026-07,27,Mineral fuels and oils,sea,684,30.3
+2026-07,27,Mineral fuels and oils,air,400,8.8
+2026-07,39,Plastics and articles thereof,sea,2292,28.7
+2026-07,39,Plastics and articles thereof,air,125,7.3
+2026-07,30,Pharmaceutical products,sea,1726,45.8
+2026-07,30,Pharmaceutical products,air,638,8.1
+2026-07,87,Vehicles other than railway,sea,730,27.4
+2026-07,87,Vehicles other than railway,air,47,8.0
+2026-07,90,Optical and medical instruments,sea,819,34.9
+2026-07,90,Optical and medical instruments,air,200,6.2
+2026-07,61,Knitted apparel,sea,1172,42.4
+2026-07,61,Knitted apparel,air,507,7.7
+2026-07,22,Beverages and spirits,sea,1928,46.4
+2026-07,22,Beverages and spirits,air,716,9.3
+2026-07,71,Precious stones and metals,sea,2211,42.7
+2026-07,71,Precious stones and metals,air,614,9.2
+2026-08,84,Machinery and mechanical appliances,sea,2184,22.5
+2026-08,84,Machinery and mechanical appliances,air,730,6.8
+2026-08,85,Electrical machinery and equipment,sea,831,31.9
+2026-08,85,Electrical machinery and equipment,air,326,7.3
+2026-08,27,Mineral fuels and oils,sea,559,26.4
+2026-08,27,Mineral fuels and oils,air,386,6.8
+2026-08,39,Plastics and articles thereof,sea,1690,27.9
+2026-08,39,Plastics and articles thereof,air,240,6.5
+2026-08,30,Pharmaceutical products,sea,1953,38.5
+2026-08,30,Pharmaceutical products,air,284,10.1
+2026-08,87,Vehicles other than railway,sea,763,29.8
+2026-08,87,Vehicles other than railway,air,640,6.5
+2026-08,90,Optical and medical instruments,sea,679,30.3
+2026-08,90,Optical and medical instruments,air,900,7.6
+2026-08,61,Knitted apparel,sea,793,20.3
+2026-08,61,Knitted apparel,air,226,9.4
+2026-08,22,Beverages and spirits,sea,173,39.1
+2026-08,22,Beverages and spirits,air,684,11.8
+2026-08,71,Precious stones and metals,sea,473,41.7
+2026-08,71,Precious stones and metals,air,301,10.9
+2026-09,84,Machinery and mechanical appliances,sea,684,28.8
+2026-09,84,Machinery and mechanical appliances,air,362,5.8
+2026-09,85,Electrical machinery and equipment,sea,2136,36.8
+2026-09,85,Electrical machinery and equipment,air,263,7.2
+2026-09,27,Mineral fuels and oils,sea,1821,28.4
+2026-09,27,Mineral fuels and oils,air,895,6.6
+2026-09,39,Plastics and articles thereof,sea,1109,32.8
+2026-09,39,Plastics and articles thereof,air,229,4.0
+2026-09,30,Pharmaceutical products,sea,1892,36.9
+2026-09,30,Pharmaceutical products,air,128,9.0
+2026-09,87,Vehicles other than railway,sea,674,24.6
+2026-09,87,Vehicles other than railway,air,199,7.6
+2026-09,90,Optical and medical instruments,sea,2010,31.8
+2026-09,90,Optical and medical instruments,air,808,6.9
+2026-09,61,Knitted apparel,sea,2106,29.0
+2026-09,61,Knitted apparel,air,294,6.3
+2026-09,22,Beverages and spirits,sea,1207,48.4
+2026-09,22,Beverages and spirits,air,514,9.5
+2026-09,71,Precious stones and metals,sea,1244,39.9
+2026-09,71,Precious stones and metals,air,503,11.4
+2026-10,84,Machinery and mechanical appliances,sea,728,31.0
+2026-10,84,Machinery and mechanical appliances,air,499,6.1
+2026-10,85,Electrical machinery and equipment,sea,800,27.8
+2026-10,85,Electrical machinery and equipment,air,601,7.7
+2026-10,27,Mineral fuels and oils,sea,610,32.0
+2026-10,27,Mineral fuels and oils,air,274,7.7
+2026-10,39,Plastics and articles thereof,sea,888,31.2
+2026-10,39,Plastics and articles thereof,air,242,8.5
+2026-10,30,Pharmaceutical products,sea,692,37.2
+2026-10,30,Pharmaceutical products,air,106,10.3
+2026-10,87,Vehicles other than railway,sea,1462,32.0
+2026-10,87,Vehicles other than railway,air,360,6.4
+2026-10,90,Optical and medical instruments,sea,757,26.7
+2026-10,90,Optical and medical instruments,air,117,8.3
+2026-10,61,Knitted apparel,sea,1809,23.0
+2026-10,61,Knitted apparel,air,442,5.0
+2026-10,22,Beverages and spirits,sea,1897,37.1
+2026-10,22,Beverages and spirits,air,640,11.6
+2026-10,71,Precious stones and metals,sea,2378,38.7
+2026-10,71,Precious stones and metals,air,462,8.0

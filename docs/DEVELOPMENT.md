@@ -52,6 +52,18 @@ The application containers derive `DATABASE_URL` and S3 credentials from the Pos
 - `make test`: runs the API test suite in the API container against PostgreSQL (database `<POSTGRES_DB>_test`, created automatically) and MinIO.
 - `make lint`: Ruff lint and format check for the API, TypeScript typecheck for the web app.
 - `make migrate`: applies database migrations (the API also does this on start).
+- `make seed`: loads the demo catalog from `examples/datasets` (synthetic trade and logistics data, two demo sellers). Safe to run repeatedly.
+
+## Demo catalog
+
+`examples/datasets/manifest.toml` lists the demo sellers and datasets, their prices (USD cents) and how each dataset is sliced. Each dataset is published in full plus one Resource per slice. The CSVs are synthetic and regenerated deterministically with `python3 examples/datasets/generate.py`. Edit the manifest or the generator, then run `make dev-reset`, `make dev-start` and `make seed` to load the new content from scratch (existing objects are immutable).
+
+Public endpoints:
+
+- `GET /api/catalog?q=&category=&max_price_minor=&columns=&limit=&offset=`: search published Resources (metadata only).
+- `GET /api/catalog/{id}`: one published Resource.
+- `GET /api/catalog/categories`: categories with counts.
+- `GET /api/demand?days=7`: searches that found nothing.
 
 ## Working on the code
 
