@@ -84,13 +84,10 @@ export default function ResourcePage() {
       <aside className="h-fit min-w-0 rounded-xl border border-line bg-white p-5 lg:sticky lg:top-6">
         <p className="text-sm text-muted">Price per purchase</p>
         <p className="text-3xl font-semibold tabular-nums">{formatPrice(resource.price.amount_minor)}</p>
-        <h2 className="mt-5 flex items-center gap-2 font-semibold">
-          Buy with your agent
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Coming soon</span>
-        </h2>
+        <h2 className="mt-5 font-semibold">Buy with your agent</h2>
         <p className="mt-1 text-sm text-muted">
-          Agents will pay per request with x402 on the XRP Ledger Testnet, straight to the seller. The free Sliver MCP
-          will let any agent search, check fit and buy within your budget; this install command works once it ships.
+          Agents pay per request with x402 on the XRP Ledger Testnet, straight to the seller. The free Sliver MCP lets
+          any agent search, check fit and buy within your budget.
         </p>
         <pre className="mt-3 overflow-x-auto rounded-lg bg-ink p-3 text-xs text-white">{MCP_INSTALL}</pre>
         <p className="mt-3 text-xs text-muted">

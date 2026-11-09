@@ -77,6 +77,19 @@ See [ADR 0004](adr/0004-x402-payments-on-xrpl.md). After `make seed` and `make w
 
 Settings (all optional, see `.env.example`): `FACILITATOR_URL`, `XRPL_RPC_URL` (Testnet allow-list only) and `DROPS_PER_USD`.
 
+## Buyer MCP and x402 client
+
+`packages/` is a uv workspace (Python 3.11+, uv 0.9.17) with `sliver-x402` (x402 v2 XRPL client) and `sliver-mcp` (the buyer's stdio MCP server). They run on the host, not in Compose. Install and agent setup are in [packages/sliver-mcp/README.md](../packages/sliver-mcp/README.md).
+
+```bash
+cd packages
+uv sync --all-packages
+uv run ruff check . && uv run ruff format --check .
+uv run pytest
+```
+
+The tests use a stub Sliver API and stub facilitator and need no network. To try the server against the local stack, run `uv run sliver-mcp` (or point an MCP client at it) with `SLIVER_API_URL=http://127.0.0.1:8000` and either `sliver-mcp wallet init` or `SLIVER_WALLET_SEED` set to the demo buyer seed from `.env` (Testnet only). Buyer state lives in `~/.sliver/` (`SLIVER_HOME`).
+
 ## Working on the code
 
 - API source: `apps/api/sliver_api`, tests in `apps/api/tests`, migrations in `apps/api/migrations`. Edits reload automatically.
@@ -96,6 +109,7 @@ Settings (all optional, see `.env.example`): `FACILITATOR_URL`, `XRPL_RPC_URL` (
 - Shell scripts, workflows and Compose configuration checks (shellcheck, actionlint, `docker compose config`).
 - API lint and tests against a PostgreSQL service.
 - Web typecheck and production build.
+- Buyer packages (`packages/`): Ruff lint and format check and tests on Python 3.11 and 3.13.
 - The containerized stack: repeat-install `.env` preservation, all five services healthy, health endpoints and web proxy, tests and lint inside the containers, degraded health with storage stopped, and volume preservation on stop.
 
 ## Future / not yet committed
