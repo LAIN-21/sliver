@@ -48,8 +48,8 @@ def rows(run_id: str, today: date) -> list[list[str]]:
     congestion = 1.0
     table = []
     for day in days(today):
-        # Slow-moving congestion, a weekly rhythm, and daily noise per vessel type.
-        congestion = min(1.8, max(0.6, congestion + rng.gauss(0.0, 0.04)))
+        # Congestion that wanders but returns to normal, a weekly rhythm, and daily noise.
+        congestion = min(1.4, max(0.7, 1 + 0.85 * (congestion - 1) + rng.gauss(0.0, 0.03)))
         weekly = 1 + 0.08 * math.sin(2 * math.pi * day.weekday() / 7)
         waits = [max(0.5, base * congestion * weekly * rng.uniform(0.8, 1.2)) for base in WAITS.values()]
         vessels = 95 * congestion * rng.uniform(0.9, 1.1)

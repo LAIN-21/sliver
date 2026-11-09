@@ -98,7 +98,7 @@ To sign in as a seller and buy on Testnet:
    make demo
    ```
 
-   A demo seller uploads a fresh synthetic table, the pipeline accepts it, and the seller publishes it at the suggested prices. A scripted buyer running the Sliver MCP's own code then declines a question Sliver can't answer and buys last month's sliver on Testnet within a $5 budget. The validated transaction is written into [Testnet transactions](#testnet-transactions-from-make-demo). It runs `make wallets` itself and never resets data ([details](docs/DEVELOPMENT.md#demo-make-demo)).
+   A demo seller uploads a fresh synthetic table, the pipeline accepts it (or, if it misses the quality threshold with no blocking finding, the demo reviewer approves it), and the seller publishes it at the suggested prices. A scripted buyer running the Sliver MCP's own code then declines a question Sliver can't answer and buys last month's sliver on Testnet within a $5 budget. The validated transaction is written into [Testnet transactions](#testnet-transactions-from-make-demo). It runs `make wallets` itself and never resets data ([details](docs/DEVELOPMENT.md#demo-make-demo)).
 
 Sign in at http://127.0.0.1:5173/sell/login as `harbour-analytics@sliver.local`, `strait-line-data@sliver.local` or `reviewer@sliver.local`. As a seller, upload a CSV at `/sell/upload`; once it is accepted, its page shows "Price and publish". Your earnings and unmet buyer demand are at `/sell/insights`. `make dev-stop` stops the stack and keeps its data. Every target is described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#make-targets).
 

@@ -66,7 +66,7 @@ def run_record(title: str = "Singapore anchorage waiting times: October 2026") -
         ],
         "dataset_title": "Singapore anchorage waiting times, daily (demo run 20261109T120000Z)",
         "dataset_rows": 184,
-        "quality_score": 100,
+        "acceptance": "accepted automatically (quality 88)",
         "review_engine": "offline fallback",
         "published": 6,
         "answers": [
@@ -141,6 +141,35 @@ def test_xrp_formatting():
     assert demo.xrp(700_000) == "0.7"
     assert demo.xrp(1_000_000) == "1"
     assert demo.xrp(1) == "0.000001"
+
+
+@pytest.mark.parametrize(
+    ("status", "decision", "expected"),
+    [
+        ("review", {"decision": "review", "quality_score": 68, "threshold": 70, "blocking": []}, True),
+        ("accepted", {"decision": "accepted", "quality_score": 88, "threshold": 70, "blocking": []}, False),
+        ("rejected", {"decision": "review", "quality_score": 68, "threshold": 70, "blocking": []}, False),
+        (
+            "review",
+            {"decision": "review", "quality_score": 90, "threshold": 70, "blocking": [{"code": "pii_email"}]},
+            False,
+        ),
+        (
+            "review",
+            {
+                "decision": "review",
+                "quality_score": 60,
+                "threshold": 70,
+                "blocking": [{"code": "near_duplicate"}],
+            },
+            False,
+        ),
+        ("review", {"decision": "review", "threshold": 70, "blocking": []}, False),
+        ("review", {}, False),
+    ],
+)
+def test_demo_reviewer_approves_only_a_quality_score_miss(status, decision, expected):
+    assert demo.reviewable(status, decision) is expected
 
 
 # --- Testnet guards and ledger facts --------------------------------------------------------

@@ -43,6 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 START = "<!-- demo-tx:start -->"
 END = "<!-- demo-tx:end -->"
 DEMO_SELLER = "strait-line-data@sliver.local"
+DEMO_REVIEWER = "reviewer@sliver.local"
 BUYER_SEED_VAR = "SLIVER_DEMO_BUYER_SEED"
 BUDGET_USD = 5
 PUBLIC_SAMPLE_ROWS = 3
@@ -110,7 +111,7 @@ def render_block(run: dict[str, Any]) -> str:
     lines += [
         "",
         f"In this run the demo seller uploaded “{md(run['dataset_title'])}” ({run['dataset_rows']} rows). "
-        f"The pipeline accepted it (quality {run['quality_score']}, AI review: {md(run['review_engine'])}), "
+        f"It was {run['acceptance']} after the pipeline's checks (AI review: {md(run['review_engine'])}), "
         f"and the seller published {run['published']} slivers at their suggested prices. "
         f"The buyer then asked two questions with a ${BUDGET_USD} budget, using the Sliver MCP's "
         "own search, evaluator and budget-capped buyer:",
@@ -206,6 +207,20 @@ def read_ledger_tx(
 
 
 # --- helpers ------------------------------------------------------------------------------
+
+
+def reviewable(status: str, decision: dict) -> bool:
+    """A dataset the demo reviewer may approve: waiting for review only because its quality score
+    is below the threshold, with no blocking finding (privacy, duplicates, sensitivity, errors)."""
+    score, threshold = decision.get("quality_score"), decision.get("threshold")
+    return (
+        status == "review"
+        and decision.get("decision") == "review"
+        and not decision.get("blocking")
+        and isinstance(score, int)
+        and isinstance(threshold, int)
+        and score < threshold
+    )
 
 
 def read_env(path: Path) -> dict[str, str]:
@@ -390,14 +405,49 @@ class Demo:
                     f"The pipeline did not finish in {PIPELINE_TIMEOUT_SECONDS} s; check `make logs`."
                 )
             time.sleep(2)
-        if detail["status"] != "accepted":
+        decision = (next((s for s in detail["steps"] if s["stage"] == "decide"), {}).get("details")) or {}
+        if detail["status"] == "accepted":
+            self.acceptance = f"accepted automatically (quality {decision.get('quality_score')})"
+            say(f"  decision: {self.acceptance}")
+            return detail
+        if not reviewable(detail["status"], decision):
             raise DemoError(
-                f"The dataset was not accepted automatically (status {detail['status']}). "
-                f"See {self.web_url}/sell/datasets/{detail['id']}; the demo never approves its own upload."
+                f"The dataset was not accepted (status {detail['status']}, "
+                f"{len(decision.get('blocking') or [])} blocking findings). "
+                f"See {self.web_url}/sell/datasets/{detail['id']}; "
+                "the demo approves only an upload that missed the quality threshold."
             )
-        decision = next((s for s in detail["steps"] if s["stage"] == "decide"), {})
-        say(f"  decision: accepted, quality {decision.get('details', {}).get('quality_score')}")
-        return detail
+        return self.approve(detail, decision)
+
+    def approve(self, detail: dict, decision: dict) -> dict:
+        """The demo reviewer approves an upload that missed the threshold on its quality score
+        alone (Claude's concerns vary between runs); never one with a blocking finding."""
+        score, threshold = decision.get("quality_score"), decision.get("threshold")
+        say(f"  quality {score} is below the auto-accept threshold of {threshold}, with no blocking findings")
+        password = self.secret("SLIVER_REVIEWER_PASSWORD")
+        if not password:
+            raise DemoError("The upload needs a reviewer, but SLIVER_REVIEWER_PASSWORD is empty.")
+        with httpx.Client(base_url=self.api_url, headers={"Origin": self.web_url}, timeout=60.0) as reviewer:
+            checked(
+                reviewer.post("/api/auth/login", json={"email": DEMO_REVIEWER, "password": password}),
+                "Reviewer sign-in (check SLIVER_REVIEWER_PASSWORD, then `make seed`)",
+            )
+            reason = (
+                f"Approved by the scripted demo reviewer (make demo): quality {score} is below the "
+                f"{threshold} threshold, with no blocking findings, on synthetic demo data."
+            )
+            checked(
+                reviewer.post(
+                    f"/api/seller/datasets/{detail['id']}/review",
+                    json={"decision": "approve", "reason": reason},
+                ),
+                "Reviewer approval",
+            )
+        self.acceptance = (
+            f"approved by the demo reviewer (quality {score}, below the threshold of {threshold})"
+        )
+        say(f"  {DEMO_REVIEWER} approves it with the reason: {reason}")
+        return checked(self.seller.get(f"/api/seller/datasets/{detail['id']}"), "Dataset status")
 
     def publish(self, dataset: dict) -> list[dict]:
         step(4, "Seller reviews the explainable valuation and publishes")
@@ -570,7 +620,6 @@ class Demo:
                 f"{xrp(facts['delivered_drops'])} XRP {facts['account']} → {facts['destination']}"
             )
             recorded.append({**facts, "price_minor": tx["price_minor"], "title": tx["title"]})
-        decision = next((s for s in dataset["steps"] if s["stage"] == "decide"), {})
         review = next((s for s in dataset["steps"] if s["stage"] == "ai_review"), {})
         engine = (review.get("details") or {}).get("engine")
         run = {
@@ -580,7 +629,7 @@ class Demo:
             "transactions": recorded,
             "dataset_title": dataset["title"],
             "dataset_rows": dataset["row_count"],
-            "quality_score": (decision.get("details") or {}).get("quality_score"),
+            "acceptance": self.acceptance,
             "review_engine": (
                 f"Claude ({(review.get('details') or {}).get('model')})"
                 if engine == "claude"
