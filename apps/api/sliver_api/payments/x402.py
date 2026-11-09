@@ -61,7 +61,7 @@ def decode_payment_signature(header: str) -> PaymentPayload:
     try:
         envelope = json.loads(base64.b64decode(header, validate=True))
         payload = PaymentPayload.from_dict(envelope)
-    except (ValueError, TypeError, KeyError) as error:
+    except (ValueError, TypeError, KeyError, AttributeError) as error:
         raise ValueError("PAYMENT-SIGNATURE is not a base64 JSON x402 payload") from error
     if payload.x402_version != X402_VERSION:
         raise ValueError("Only x402Version 2 is supported")

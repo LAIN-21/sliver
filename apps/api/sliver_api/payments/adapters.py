@@ -20,16 +20,20 @@ class Ledger(Protocol):
 class HttpFacilitator:
     """t54's XRPL facilitator (or any x402 v2 facilitator) over HTTP."""
 
-    def __init__(self, base_url: str, timeout_seconds: float = 75.0):
-        self.client = FacilitatorClient(
-            FacilitatorClientOptions(base_url=base_url, timeout_seconds=timeout_seconds)
+    def __init__(self, base_url: str, verify_timeout: float = 15.0, settle_timeout: float = 75.0):
+        # Verify runs while the invoice row is locked, so keep it short; settle waits for the ledger.
+        self.verifier = FacilitatorClient(
+            FacilitatorClientOptions(base_url=base_url, timeout_seconds=verify_timeout)
+        )
+        self.settler = FacilitatorClient(
+            FacilitatorClientOptions(base_url=base_url, timeout_seconds=settle_timeout)
         )
 
     def verify(self, header: str, requirements: PaymentRequirements) -> PaymentVerifyResponse:
-        return self.client.verify(payment_header=header, payment_requirements=requirements)
+        return self.verifier.verify(payment_header=header, payment_requirements=requirements)
 
     def settle(self, header: str, requirements: PaymentRequirements) -> SettlementResponse:
-        return self.client.settle(payment_header=header, payment_requirements=requirements)
+        return self.settler.settle(payment_header=header, payment_requirements=requirements)
 
 
 class XrplLedger:

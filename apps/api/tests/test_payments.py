@@ -410,3 +410,40 @@ def test_mainnet_and_unknown_rpc_endpoints_are_refused():
         Settings(xrpl_rpc_url="https://xrplcluster.com/", **BASE)
     with pytest.raises(ValidationError):
         Settings(xrpl_rpc_url="http://s.altnet.rippletest.net:51234/", **BASE)
+
+
+def test_malformed_accepted_field_is_a_client_error(market):
+    client, resource_id = market
+    header = base64.b64encode(
+        json.dumps({"x402Version": 2, "accepted": "oops", "payload": {"signedTxBlob": "00"}}).encode()
+    ).decode()
+    response = client.get(f"/api/resources/{resource_id}/data", headers={"PAYMENT-SIGNATURE": header})
+    assert response.status_code == 400 and response.json()["error"]["code"] == "invalid_payment"
+
+
+def test_ledger_lookup_errors_after_settlement_are_retryable(market, facilitator, ledger):
+    client, resource_id = market
+    lookup = ledger.transaction
+
+    def broken(_tx_hash):
+        raise ConnectionError("rpc down")
+
+    ledger.transaction = broken
+    response, _, header = pay(client, resource_id, ledger)
+    assert response.status_code == 409 and response.json()["error"]["code"] == "settlement_pending"
+    ledger.transaction = lookup
+    retry = client.get(f"/api/resources/{resource_id}/data", headers={"PAYMENT-SIGNATURE": header})
+    assert retry.status_code == 200 and len(facilitator.settled) == 1
+
+
+def test_expired_unpaid_invoices_are_purged(market, sessions):
+    client, resource_id = market
+    first = challenge(client, resource_id).json()["accepts"][0]["extra"]["invoiceId"]
+    with sessions() as db:
+        payment = db.scalar(select(Payment).where(Payment.invoice_id == first))
+        payment.expires_at -= timedelta(hours=1)
+        db.commit()
+    challenge(client, resource_id)
+    with sessions() as db:
+        assert db.scalar(select(Payment).where(Payment.invoice_id == first)) is None
+        assert len(db.scalars(select(Payment)).all()) == 1

@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from x402_xrpl.types import PaymentRequirements
@@ -72,6 +72,8 @@ class PurchaseService:
         return self.pay(db, resource, seller.xrpl_address, header, url)
 
     def challenge(self, db: Session, resource: Resource, pay_to: str, url: str, error: str | None = None):
+        # Unpaid invoices are free to request; drop expired ones so they cannot pile up.
+        db.execute(delete(Payment).where(Payment.status == "required", Payment.expires_at < utcnow()))
         invoice_id = uuid.uuid4().hex
         amount = drops_for(resource.price_minor, self.settings.drops_per_usd)
         requirements = build_requirements(self.settings, amount=amount, pay_to=pay_to, invoice_id=invoice_id)
@@ -174,7 +176,11 @@ class PurchaseService:
         if payment.status != "delivered":
             result, problem = None, "transaction_not_found"
             for attempt in range(self.ledger_attempts):
-                result = self.ledger.transaction(tx_hash)
+                try:
+                    result = self.ledger.transaction(tx_hash)
+                except Exception:
+                    logger.warning("ledger lookup failed for %s; will retry", tx_hash, exc_info=True)
+                    result = None
                 problem = settlement_problem(
                     result, pay_to=payment.pay_to, amount_drops=payment.amount, invoice_id=payment.invoice_id
                 )
