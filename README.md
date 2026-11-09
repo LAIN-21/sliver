@@ -166,16 +166,16 @@ Every step is recorded as a public activity event (no headers, blobs, invoice id
 ### Testnet transactions from `make demo`
 
 <!-- demo-tx:start -->
-_Written by `make demo` on 2026-11-09 11:47 UTC (run `20261109T114735Z`). Each transaction was read back from XRPL Testnet (`s.altnet.rippletest.net`): a validated `tesSUCCESS` Payment from the buyer's wallet straight to the seller. Re-run `make demo` to replace this block; do not edit it by hand._
+_Written by `make demo` on 2026-11-09 12:26 UTC (run `20261109T122601Z`). Each transaction was read back from XRPL Testnet (`s.altnet.rippletest.net`): a validated `tesSUCCESS` Payment from the buyer's wallet straight to the seller. Re-run `make demo` to replace this block; do not edit it by hand._
 
 | Transaction | Ledger | Amount | Buyer → seller | Sliver |
 |---|---|---|---|---|
-| [`55C5E8151B9618ACF181CAAC9CF6B1AE64D4A21AB76FF34649B3BA0AF1D4E32A`](https://testnet.xrpl.org/transactions/55C5E8151B9618ACF181CAAC9CF6B1AE64D4A21AB76FF34649B3BA0AF1D4E32A) | 22189945 | 0.488 XRP ($1.22) | [`rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w`](https://testnet.xrpl.org/accounts/rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w) → [`rEbme52s62cjVSqbxiUqd94kRsMwoxm7Nd`](https://testnet.xrpl.org/accounts/rEbme52s62cjVSqbxiUqd94kRsMwoxm7Nd) | Singapore Daily Anchorage Wait Times by Vessel Type and Anchorage Vessel Counts: October 2026 |
+| [`EBB62A05AEF0761C9A092EE5B13ACE8FB8BE00004C9F9C262CD81E78A5D1645B`](https://testnet.xrpl.org/transactions/EBB62A05AEF0761C9A092EE5B13ACE8FB8BE00004C9F9C262CD81E78A5D1645B) | 22190609 | 0.472 XRP ($1.18) | [`rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w`](https://testnet.xrpl.org/accounts/rHnhNeqqWDqm9vx9yDiTW9cHK9Ps1s7w1w) → [`rEbme52s62cjVSqbxiUqd94kRsMwoxm7Nd`](https://testnet.xrpl.org/accounts/rEbme52s62cjVSqbxiUqd94kRsMwoxm7Nd) | Singapore Daily Anchorage Wait Times by Vessel Type and Anchorage Queue Size: October 2026 |
 
-In this run the demo seller uploaded “Singapore anchorage waiting times, daily (demo run 20261109T114735Z)” (184 rows). It was accepted automatically (quality 88) after the pipeline's checks (AI review: Claude (claude-opus-5-5)), and the seller published 7 slivers at their suggested prices. The buyer then asked two questions with a $5 budget, using the Sliver MCP's own search, evaluator and budget-capped buyer:
+In this run the demo seller uploaded “Singapore anchorage waiting times, daily (demo run 20261109T122601Z)” (184 rows). It was accepted automatically (quality 81) after the pipeline's checks (AI review: Claude (claude-opus-5-5)), and the seller published 7 slivers at their suggested prices. The buyer then asked two questions with a $5 budget, using the Sliver MCP's own search, evaluator and budget-capped buyer:
 
 1. “Air-cargo rates from Singapore Changi (SIN) to Frankfurt (FRA), per kg. Budget $5.” → `look_elsewhere`: nothing was signed or spent.
-2. “Daily anchorage wait hours in Singapore for container ships, tankers and bulk carriers in October 2026. Budget $5.” → `buy` “Singapore Daily Anchorage Wait Times by Vessel Type and Anchorage Vessel Counts: October 2026” for $1.22: paid, delivered and SHA-256-verified.
+2. “Daily anchorage wait hours in Singapore for container ships, tankers and bulk carriers in October 2026. Budget $5.” → `buy` “Singapore Daily Anchorage Wait Times by Vessel Type and Anchorage Queue Size: October 2026” for $1.18: paid, delivered and SHA-256-verified.
 <!-- demo-tx:end -->
 
 ## XRPL AI Starter Kit integration
