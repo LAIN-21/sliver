@@ -53,6 +53,8 @@ seed:
 wallets:
 	@$(ensure-env)
 	$(COMPOSE) run --rm -v $(CURDIR):/repo api python -m sliver_api.payments.wallets /repo/.env /repo/examples/datasets/manifest.toml
+	@# The API reads SLIVER_PLATFORM_ADDRESS at start; recreate running app containers if it changed.
+	@if [ -n "$$($(COMPOSE) ps -q api)" ]; then $(COMPOSE) up -d --wait api worker; fi
 
 smoke-testnet:
 	@$(ensure-env)

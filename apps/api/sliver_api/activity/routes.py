@@ -17,7 +17,7 @@ from ..catalog.public import iso
 from ..deps import DB
 from ..models import ActivityEvent, Payment, Resource, utcnow
 from .log import EVENT_TYPES
-from .public import public_event
+from .public import public_event, public_fee
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["activity"])
@@ -90,6 +90,7 @@ def purchase(payment_id: Annotated[str, Path(max_length=36)], db: DB) -> dict:
         "payer": next((event["payer"] for event in reversed(events) if event["payer"]), None),
         "transaction": (validated or with_tx or [None])[-1],
         "agent_note": next((event["agent_note"] for event in reversed(events) if event["agent_note"]), None),
+        "platform_fee": public_fee(payment),
         "events": events,
     }
 

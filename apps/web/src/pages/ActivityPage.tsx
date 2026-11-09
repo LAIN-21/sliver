@@ -130,7 +130,7 @@ function PurchaseCard({ purchase, now }: { purchase: Purchase; now: number }) {
             <AccountLink address={payer} size={4} />
           </Meta>
         ) : null}
-        <Meta label="Seller">
+        <Meta label="Paid to">
           <AccountLink address={first.pay_to} size={4} />
         </Meta>
         {tx ? (

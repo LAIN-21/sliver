@@ -32,7 +32,7 @@ def test_purchase_saves_verified_file_and_returns_transaction(buyer, stub, confi
     assert result["amount_xrp"] == 0.6 and result["price_usd"] == 1.5
     assert result["spent_last_24h_usd"] == 1.5
     assert buyer.store.purchases()[0]["status"] == "delivered"
-    assert buyer.store.payee(f"{config.api_url}|Harbour Analytics (demo seller)") == stub.pay_to
+    assert buyer.store.payee(f"{config.api_url}|platform") == stub.pay_to
 
 
 def test_refuses_without_a_budget_before_any_request(buyer, stub, signer):
@@ -67,11 +67,20 @@ def test_spend_older_than_a_day_does_not_count(buyer):
     assert buyer.buy(CHEAP, budget_usd=5)["status"] == "delivered"
 
 
-def test_refuses_a_payee_that_differs_from_the_pinned_seller(buyer, stub, signer):
+def test_refuses_a_payee_that_differs_from_the_pinned_platform(buyer, stub, signer):
     buyer.buy(CHEAP, budget_usd=5)
     stub.pay_to = Wallet.create().address
     assert refused(buyer, CHEAP, budget_usd=5) == "challenge_rejected"
     assert signer.signed == 1
+
+
+def test_one_platform_payee_serves_every_seller(buyer, stub, config):
+    buyer.store.pin_payee(f"{config.api_url}|Harbour Analytics (demo seller)", Wallet.create().address)
+    stub.listings[CHEAP]["seller"] = {"name": "Another seller"}
+    assert buyer.buy(CHEAP, budget_usd=5)["status"] == "delivered"  # an old per-seller pin is ignored
+    stub.listings[CHEAP]["seller"] = {"name": "Harbour Analytics (demo seller)"}
+    assert buyer.buy(CHEAP, budget_usd=5)["status"] == "delivered"
+    assert {payment["Destination"] for payment in stub.payments} == {stub.pay_to}
 
 
 def test_refuses_an_amount_that_differs_from_the_listing_price(buyer, stub, signer):

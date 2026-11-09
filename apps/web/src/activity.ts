@@ -6,9 +6,9 @@ export const EXPLORER = "https://testnet.xrpl.org";
 
 export type Step = { type: ActivityType; label: string; hint: string };
 
-// The happy path of one x402 purchase, in order (ADR 0004).
+// The happy path of one x402 purchase, in order (ADR 0004; buyers pay Sliver, ADR 0005).
 export const STEPS: Step[] = [
-  { type: "payment_required", label: "402 Payment Required", hint: "Sliver quoted the price and the seller's XRPL address." },
+  { type: "payment_required", label: "402 Payment Required", hint: "Sliver quoted the price and its platform XRPL address." },
   { type: "signature_received", label: "Signed payment received", hint: "The agent sent a presigned XRPL Payment in PAYMENT-SIGNATURE." },
   { type: "verified", label: "Verified by the facilitator", hint: "Signature, amount, destination and invoice binding check out." },
   { type: "integrity_checked", label: "Data integrity checked", hint: "The stored CSV matches the SHA-256 published in the listing." },

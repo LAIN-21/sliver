@@ -1,7 +1,7 @@
 """Buyer-defined custom slices: unlisted derived Resources and a per-dataset seller toggle (#39).
 
-Revision ID: 0008_custom_slices
-Revises: 0007_valuation
+Revision ID: 0009_custom_slices
+Revises: 0008_platform_fee
 """
 
 from collections.abc import Sequence
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision: str = "0008_custom_slices"
-down_revision: str | None = "0007_valuation"
+revision: str = "0009_custom_slices"
+down_revision: str | None = "0008_platform_fee"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

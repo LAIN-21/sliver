@@ -4,9 +4,10 @@ A buyer's agent asks for exactly the rows it needs from a published full-dataset
 range on the dataset's time column and/or equality on its slice column or another low-cardinality,
 non-personal text column. Sliver cuts those rows from the parent's stored object (SHA-256
 checked), prices them with `valuation.custom_slice_price` and stores them as a derived Resource:
-published, so the unchanged x402 path (`GET /api/resources/{id}/data`) sells it, with whatever
-payee and fee rules that path applies, and the sale counts for the same seller, but unlisted, so
-it never appears in search, categories, demand or the x402 directory.
+published, so the unchanged x402 path (`GET /api/resources/{id}/data`) sells it like any sliver
+(the buyer pays through Sliver; the seller is credited, net of Sliver's fee, and paid out on the
+15-day schedule, ADR 0005), but unlisted, so it never appears in search, categories, demand or the
+x402 directory.
 
 What may be filtered follows the leak rules the pipeline already applies to public text
 (`pipeline/leakguard.py`): the time column only when the privacy scan did not flag it, and

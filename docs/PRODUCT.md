@@ -19,9 +19,20 @@ The initial seller focus is structured uploaded datasets.
 
 Enterprise and API integrations are a later input mechanism into the same Resource marketplace.
 
-Buyers pay for the slice their question needs. Besides the slivers a seller publishes, a buyer's agent may ask for a custom slice of a published dataset (a time range and/or one value of a category column): Sliver cuts exactly those rows, prices them per row from the seller's published full-dataset price, never above it, and sells them like any sliver: the sale is credited to the same seller. Sellers choose at publication whether to offer custom slices (on by default). Asking for a quote never spends; the buyer's agent still decides whether to buy.
+Buyers pay for the slice their question needs. Besides the slivers a seller publishes, a buyer's agent may ask for a custom slice of a published dataset (a time range and/or one value of a category column): Sliver cuts exactly those rows, prices them per row from the seller's published full-dataset price, never above it, and sells them like any sliver: the buyer pays through Sliver, and the seller is credited (net of Sliver's fee) and paid out on the 15-day schedule. Sellers choose at publication whether to offer custom slices (on by default). Asking for a quote never spends; the buyer's agent still decides whether to buy.
 
 Pricing considers both coverage and value. Sliver suggests an explainable price for each sliver from its quality, uniqueness against the catalog, unmet buyer demand, public availability and coverage; the seller accepts or overrides it before publishing. The formula is an architecture question, not a product invariant. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Business model
+
+Sellers list data for sale. On every sale the seller gets paid and Sliver takes a cut, the platform fee (10% by default).
+
+- The buyer pays the full listed price to Sliver's platform wallet, with one standard x402 payment.
+- Sliver keeps its fee and pays the seller the rest every 15 days (on the 1st and 16th of each month). Payouts are not automated yet.
+- Sellers see the balance Sliver owes them, the next payout date, and the gross, Sliver's fee and their net for every sale. Before publishing, they see the net they would receive at each price.
+- Testnet only. Sliver holds funds between a sale and the payout, so Mainnet use needs custody and compliance work first.
+
+See [ADR 0005](adr/0005-platform-collection-and-payouts.md).
 
 ## Conceptual flows
 

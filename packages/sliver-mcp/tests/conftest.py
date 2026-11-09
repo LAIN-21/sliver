@@ -22,7 +22,7 @@ from sliver_mcp.config import Config, drops_for
 from sliver_mcp.store import Store
 from sliver_x402 import Requirement, invoice_id_field, sign_offline
 
-SELLER = Wallet.create()
+PLATFORM = Wallet.create()  # Sliver's platform wallet: every 402 asks to pay it (ADR 0005)
 BUYER = Wallet.create()
 CSV = b"week_start,lane,container_type,usd_per_container\n2026-10-26,SGSIN-CNSHA,40HC,1650\n"
 VALIDATED_LEDGER = 1000
@@ -108,7 +108,7 @@ class StubSliver:
 
     def __init__(self):
         self.listings = {listing["id"]: copy.deepcopy(listing) for listing in LISTINGS}
-        self.pay_to = SELLER.address
+        self.pay_to = PLATFORM.address
         self.network = "xrpl:1"
         self.drops_per_usd = 400_000
         self.data = {LISTINGS[0]["id"]: CSV}

@@ -2,7 +2,7 @@
 
 Free, open-source MCP server that lets any agent search [Sliver](../../README.md), check whether a data sliver fits its need, and buy it with x402 on the XRP Ledger **Testnet**, within budget limits you set.
 
-It is the buyer's own tool. It runs on your machine over stdio, signs payments locally with your Testnet wallet, and pays the seller directly. The seed never leaves your machine and Sliver never sees it. Sliver never decides to spend: your agent and you do.
+It is the buyer's own tool. It runs on your machine over stdio, signs payments locally with your Testnet wallet, and pays Sliver's platform wallet, which keeps its fee and pays the seller every 15 days. The seed never leaves your machine and Sliver never sees it. Sliver never decides to spend: your agent and you do.
 
 ## Tools
 
@@ -24,7 +24,7 @@ The server tells agents to evaluate before buying, to say so and look elsewhere 
 
 ### Custom slices
 
-When the best pre-cut sliver covers much more than the need (the requested time range is at most half of what it covers), `sliver_evaluate` returns `custom_slice`: the arguments for `sliver_quote_slice` on a full-dataset listing that offers custom slices (`custom_slices.available` in its listing), keeping the sliver's category (for example `{"lane": "SGSIN-CNSHA"}`) when the full dataset has that column. Quoting is free and never spends: Sliver cuts the rows, prices them per row from the full dataset's published price (never above it) and answers with an unlisted sliver id. The quote has a one-sentence `summary` for the human ("$0.24 (0.096 XRP) for 8 rows × 4 columns …"), the price in USD and XRP, rows, columns, coverage, the filter, the parent listing and seller, the SHA-256 and its validity (the price is fixed while the parent stays published; each purchase gets a fresh invoice). The agent tells its human the summary and calls `sliver_buy` with the quote's id only after the human agrees, under the same budget and caps. Sliver never decides to spend. A refusal says what can be filtered, or points to an existing sliver with exactly those rows.
+When the best pre-cut sliver covers much more than the need (the requested time range is at most half of what it covers), `sliver_evaluate` returns `custom_slice`: the arguments for `sliver_quote_slice` on a full-dataset listing that offers custom slices (`custom_slices.available` in its listing), keeping the sliver's category (for example `{"lane": "SGSIN-CNSHA"}`) when the full dataset has that column. Quoting is free and never spends: Sliver cuts the rows, prices them per row from the full dataset's published price (never above it) and answers with an unlisted sliver id. The quote has a one-sentence `summary` for the human ("$0.24 (0.096 XRP) for 8 rows × 4 columns …"), the price in USD and XRP, rows, columns, coverage, the filter, the parent listing and seller, the SHA-256 and its validity (the price is fixed while the parent stays published; each purchase gets a fresh invoice). The agent tells its human the summary and calls `sliver_buy` with the quote's id only after the human agrees, under the same budget and caps. Like any sliver, the buyer pays through Sliver, and the seller is credited (net of Sliver's fee) and paid out on the 15-day schedule. Sliver never decides to spend. A refusal says what can be filtered, or points to an existing sliver with exactly those rows.
 
 ## Spending policy
 
@@ -33,7 +33,7 @@ When the best pre-cut sliver covers much more than the need (the requested time 
 - no `budget_usd` is given, or the price exceeds it;
 - the price exceeds the per-purchase cap or would push the last 24 hours over the daily cap;
 - another purchase is in flight on this machine;
-- the 402 challenge is not XRPL Testnet (`xrpl:1`) XRP, asks for an amount other than the listing's USD price converted at the disclosed rate (rounded up, as the Sliver API does), or a payee other than the seller's address pinned on your first purchase from that seller.
+- the 402 challenge is not XRPL Testnet (`xrpl:1`) XRP, asks for an amount other than the listing's USD price converted at the disclosed rate (rounded up, as the Sliver API does), or a payee other than Sliver's platform address pinned on your first purchase from that Sliver API.
 
 The signed Payment follows the official XRPL `exact` scheme and the t54 facilitator: `InvoiceID = SHA-256(invoiceId)`, `SourceTag` from the challenge, a bounded `LastLedgerSequence`, a capped fee, and no Memos, SendMax, DeliverMin, Paths or partial-payment flag. Delivered bytes that do not match the listing's SHA-256 are saved with an `.unverified` suffix and flagged. A payment that left your machine counts toward the daily cap even if delivery fails.
 

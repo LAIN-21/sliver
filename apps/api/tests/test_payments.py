@@ -5,6 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from conftest import PLATFORM_ADDRESS
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -157,7 +158,7 @@ def test_unpaid_request_gets_an_x402_v2_challenge(market, settings):
     assert body["resource"]["url"].endswith(f"/api/resources/{resource_id}/data")
     (accepted,) = body["accepts"]
     assert accepted["scheme"] == "exact" and accepted["network"] == "xrpl:1" and accepted["asset"] == "XRP"
-    assert accepted["payTo"] == SELLER.address
+    assert accepted["payTo"] == PLATFORM_ADDRESS
     assert accepted["amount"] == drops_for(450, settings.drops_per_usd) == "1800000"
     assert accepted["extra"]["sourceTag"] == 804681468 and accepted["extra"]["areFeesSponsored"] is False
     assert len(accepted["extra"]["invoiceId"]) == 32
@@ -183,7 +184,7 @@ def test_valid_payment_delivers_exact_bytes_with_receipt(market, store, sessions
     assert (
         receipt["transaction"]["explorer_url"] == f"https://testnet.xrpl.org/transactions/{signed.get_hash()}"
     )
-    assert receipt["pay_to"] == SELLER.address and receipt["amount"]["usd_minor"] == 450
+    assert receipt["pay_to"] == PLATFORM_ADDRESS and receipt["amount"]["usd_minor"] == 450
     assert len(facilitator.settled) == 1
 
 

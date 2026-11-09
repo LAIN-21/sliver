@@ -7,13 +7,14 @@ from datetime import date, timedelta
 import pytest
 import test_payments as harness
 from accounts import make_user, sign_in
+from conftest import PLATFORM_ADDRESS
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from sliver_api import valuation
 from sliver_api.config import Settings
 from sliver_api.main import create_app
-from sliver_api.models import ActivityEvent, Dataset, PipelineStep, Resource, User
+from sliver_api.models import ActivityEvent, Dataset, Payment, PipelineStep, Resource, User
 from sliver_api.ratelimit import Budget, TokenBuckets, budget_for
 from sliver_api.seed import seed
 from sliver_api.slices import custom
@@ -478,6 +479,22 @@ def test_a_custom_slice_is_bought_with_x402_and_counts_as_the_sellers_sale(
                                 "custom_slice_of": listed["full"]}  # fmt: skip
     assert item["transaction"]["hash"] == signed.get_hash() and item["amount"]["usd_minor"] == 98
     assert body["id"] in earnings["resource_ids"]
+    # Collected by Sliver like any sale (ADR 0005): the fee is snapshotted and the net is owed.
+    with sessions() as db:
+        payment = db.scalar(
+            select(Payment).where(Payment.resource_id == body["id"], Payment.status == "delivered")
+        )
+        assert payment.pay_to == PLATFORM_ADDRESS
+        assert (payment.platform_fee_bps, payment.platform_fee_minor, payment.seller_net_minor) == (
+            1_000,
+            9,
+            89,
+        )
+        assert (payment.platform_fee_drops, payment.seller_net_drops) == (39_200, 352_800)
+    assert item["platform_fee"] == {"bps": 1_000, "usd_minor": 9, "xrp_drops": "39200"}
+    assert item["net"] == {"usd_minor": 89, "xrp_drops": "352800"} and item["payout"]["status"] == "owed"
+    assert earnings["balance"]["owed"] == {"usd_minor": 89, "xrp_drops": "352800"}
+    assert earnings["balance"]["sales_owed"] == 1
     feed = buyer.get("/api/activity").json()
     assert any(event["resource"]["id"] == body["id"] for event in feed["items"])
 
