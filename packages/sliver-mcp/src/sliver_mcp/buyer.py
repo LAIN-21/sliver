@@ -150,6 +150,8 @@ class Buyer:
         output_dir: str | None = None,
         reason: str | None = None,
     ) -> dict[str, Any]:
+        """Buy one listing within `budget_usd`, under the purchase lock. `reason` is the agent's
+        stated reason; once cleaned by `agent_note` it goes to Sliver as X-Sliver-Agent-Note."""
         check_resource_id(resource_id)
         if budget_usd is None:  # refuse before touching the network
             self.check_policy(0, None)
@@ -178,6 +180,8 @@ class Buyer:
     def pay(
         self, listing: dict[str, Any], price_minor: int, output_dir: Path, note: str | None = None
     ) -> dict[str, Any]:
+        """Get the 402 challenge, check it against the listing, sign, pay and save the bytes.
+        `note` rides on the challenge request and on every paid attempt."""
         resource_id = listing["id"]
         signer = self.signer_factory()
         try:
