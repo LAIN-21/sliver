@@ -201,7 +201,7 @@ jobs:
           make seed
           total=$(curl --fail --silent http://127.0.0.1:8000/api/catalog | python3 -c 'import json, sys; print(json.load(sys.stdin)["total"])')
           echo "published resources: $total"
-          test "$total" -eq 21
+          test "$total" -eq 34
 
       - name: Health degrades when storage is down
         run: |
