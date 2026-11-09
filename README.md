@@ -1,6 +1,6 @@
 # Sliver
 
-**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, and pay the seller directly on XRPL Testnet with one retried HTTP request. Sliver never holds funds or keys and never spends on a buyer's behalf.
+**A data marketplace for AI agents, settled with x402 on the XRP Ledger.** Sellers upload a CSV. Sliver inspects it, has Claude write the public listing, cuts it into small slices ("slivers") and suggests an explainable price for each before the seller publishes. Buying agents find a sliver, check that it fits, and pay the seller directly on XRPL Testnet with one retried HTTP request. Sliver never holds funds or buyer keys and never spends on a buyer's behalf.
 
 Ripple track. Built after the team's SingHacks finalist [Ledger402](https://github.com/LAIN-21/ripple-challenge), see [Since SingHacks](#since-singhacks).
 
@@ -40,7 +40,7 @@ flowchart LR
   end
 
   CL["Claude API"]
-  FAC["x402 facilitator<br/>t54 (x402.org fallback)"]
+  FAC["x402 facilitator<br/>t54 by default"]
   XRPL[("XRPL Testnet<br/>xrpl:1")]
 
   SEL -- "upload CSV" --> API
@@ -148,7 +148,7 @@ sequenceDiagram
 2. **Buyer checks before signing.** The MCP refuses unless the network is `xrpl:1`, the amount equals the listing's USD price at the disclosed rate (`DROPS_PER_USD`, default 400,000 drops per USD), the payee matches the seller's pinned address, and the price fits the human's budget and the local caps.
 3. **Sign locally.** The buyer's wallet signs an XRPL Payment with `InvoiceID = SHA-256(invoiceId)`, the challenge's `SourceTag`, a bounded `LastLedgerSequence` and a capped fee. It has no Memos, SendMax, DeliverMin, Paths or partial-payment flag ([`sliver_x402/payment.py`](packages/sliver-x402/src/sliver_x402/payment.py)).
 4. **Retry with `PAYMENT-SIGNATURE`.** Sliver matches it to the stored invoice. A payment that changes any requirement, such as a lower amount, is rejected first.
-5. **Verify, then check the bytes.** The facilitator's `/verify` runs, then Sliver checks the stored sliver against its SHA-256. Money only moves if Sliver can deliver the exact bytes.
+5. **Verify, then check the bytes.** The facilitator's `/verify` runs, then Sliver checks the stored sliver against its SHA-256. Money doesn't move for a sliver whose stored bytes are missing or altered. Sliver reads the bytes again to deliver them; if that read fails after settlement, retrying the same payment re-delivers without settling again.
 6. **Settle.** The facilitator's `/settle` submits the presigned Payment. It goes from the buyer's account straight to the seller's. Sliver is never in the money path.
 7. **Independent ledger re-check.** Sliver doesn't take the facilitator's word. The transaction must be validated, `tesSUCCESS`, a Payment to `payTo` with `delivered_amount` exactly equal to the invoice, no partial-payment flag, and the right `InvoiceID` ([`payments/ledger_check.py`](apps/api/sliver_api/payments/ledger_check.py)).
 8. **Deliver.** 200 with the CSV, `PAYMENT-RESPONSE` (with the tx hash) and `X-Sliver-Receipt`. `GET /api/receipts/{id}` is the public receipt with the explorer link. Replaying the same payment re-delivers without settling twice, and a second transaction for a paid invoice gets 409.
@@ -169,7 +169,7 @@ t54 contributed XRPL x402 support to the XRPL AI Starter Kit: the `x402-xrpl` Py
 |---|---|
 | `x402-xrpl==0.3.4` types (`PaymentRequired`, `PaymentRequirements`, `PaymentPayload`) | Builds every 402 challenge and parses `PAYMENT-SIGNATURE`: [`payments/x402.py`](apps/api/sliver_api/payments/x402.py) |
 | `x402-xrpl` `FacilitatorClient` | `/verify` and `/settle`: [`payments/adapters.py`](apps/api/sliver_api/payments/adapters.py) |
-| t54 hosted Testnet facilitator | Default `FACILITATOR_URL`; `https://x402.org/facilitator` is a drop-in fallback |
+| t54 hosted Testnet facilitator | Default `FACILITATOR_URL`. `https://x402.org/facilitator` can be set instead; its `/verify` accepts our payments, but no settlement has been run through it |
 | `x402-xrpl` buyer client (`XRPLPresignedPaymentPayer`, `x402_requests`) | Real end-to-end purchase in `make smoke-testnet`: [`payments/smoke.py`](apps/api/sliver_api/payments/smoke.py) |
 | The SDK's FastAPI merchant path | Why the API is FastAPI ([ADR 0003](docs/adr/0003-application-stack-and-local-containers.md)). Challenges are built per listing rather than with the static middleware, because each sliver has its own price and seller. |
 | `xrpl-py` | Wallets (`make wallets`), local signing in the MCP, ledger reads for the re-check |
@@ -195,8 +195,8 @@ The buyer MCP signs with [`sliver-x402`](packages/sliver-x402/README.md), a smal
 - **No custody.** Buyers pay sellers' XRPL addresses directly. Sliver never signs a transaction, never holds funds, and never stores or reads buyer keys ([transactions.md](docs/agents/transactions.md)).
 - **No autonomous spending by Sliver.** A product invariant ([PRODUCT.md](docs/PRODUCT.md)): spending decisions belong to the buyer's agent and its human.
 - **Buyer budget caps in the MCP.** `sliver_buy` refuses before signing when there is no `budget_usd`, the price exceeds it, it would break the per-purchase cap (default $5) or the rolling 24-hour cap (default $20), another purchase is in flight, or the 402 challenge differs from the listing (amount, network, pinned payee). The spend ledger is written before a payment leaves the machine.
-- **Metadata-only discovery.** Every public response goes through one allow-list serializer ([`catalog/public.py`](apps/api/sliver_api/catalog/public.py)), covered by a leak test. Only `published` slivers are visible. Object keys, owner emails and rights statements never leave the API, and neither do rows, except up to five sample rows the seller explicitly made public.
-- **Privacy stage.** Uploads are scanned for emails, phone numbers, Luhn-valid card numbers, IBANs and NRIC/FIN. Findings name columns and row numbers, never values. Claude sees at most 20 sample rows, with flagged cells replaced by `[redacted]`. A leak guard rejects public text that contains raw cell values (other than dates and non-personal category values).
+- **Metadata-only discovery.** Every catalog discovery response goes through one allow-list serializer ([`catalog/public.py`](apps/api/sliver_api/catalog/public.py)), covered by a leak test. Only `published` slivers are visible. Object keys, owner emails and rights statements never leave the API, and neither do rows, except up to five sample rows the seller explicitly made public.
+- **Privacy stage.** Uploads are scanned for emails, phone numbers, Luhn-valid card numbers, IBANs and NRIC/FIN. Findings name columns and row numbers, never values. Claude sees at most 20 sample rows, with flagged cells replaced by `[redacted]`. A leak guard rejects public text that contains raw cell values (other than dates and non-personal category values, see its limits under [Limitations](#limitations)).
 - **Integrity.** Uploads and slivers are immutable objects with a SHA-256. The worker re-checks the hash before every stage, the API before every settlement, and the MCP after every delivery.
 - **Testnet only.** Network `xrpl:1` and an HTTPS allow-list of Testnet RPC endpoints are enforced in configuration, and mainnet is refused.
 - **Web sessions.** Demo accounts only, with scrypt password hashes, `HttpOnly` / `SameSite=Lax` cookies, an `Origin` allow-list on every mutation, and upload size limits enforced before parsing.
@@ -242,9 +242,9 @@ Sliver is **the marketplace on the other side**: the place a buying agent like L
 - **Testnet only.** Testnet XRP has no value. The USD-to-XRP rate is a fixed, disclosed demo rate, not a market price. There is no RLUSD pricing, marketplace fee, payout or refund flow. A settlement that fails the ledger re-check is marked failed and refunded by hand.
 - **Pricing is a demo calibration.** The category bases and factor weights in the valuation formula are not market research. Demand matching is term-based. Prices can't be changed after publishing.
 - **No hosted deployment.** Everything runs locally in Docker with development images.
-- **The facilitator is best effort with no SLA.** The real Testnet purchase is not part of CI. The x402.org facilitator is the one-setting fallback.
+- **The facilitator is best effort with no SLA.** The real Testnet purchase is not part of CI. The x402.org facilitator can be configured with one setting, but only its `/verify` has been tested with our payments.
 - **Payee pinning.** The public catalog does not publish sellers' payment addresses yet, so the MCP trusts the payee on the first purchase from a seller and pins it after that.
-- **Heuristic checks.** The privacy scan is regex-based and can miss unknown formats. The leak guard matches whole values and can miss reformatted numbers. Claude's concerns vary between runs, so borderline datasets can land on either side of the auto-accept threshold on their first review.
+- **Heuristic checks.** The privacy scan is regex-based and can miss unknown formats. The leak guard matches whole values, ignores values shorter than four characters or longer than twelve words, and can miss reformatted numbers. Claude's concerns vary between runs, so borderline datasets can land on either side of the auto-accept threshold on their first review.
 - **Demo accounts only.** There is no public sign-up. The public activity feed has no rate limit or moderation for agent notes.
 - **The demo data is synthetic.**
 

@@ -8,8 +8,8 @@ The video follows one story: a seller lists and prices data, a buying agent in C
 
 Start from a freshly seeded stack so the timeline shows only the demo purchase.
 
-1. Set `SLIVER_SELLER_PASSWORD`, `SLIVER_REVIEWER_PASSWORD` and `ANTHROPIC_API_KEY` in `.env` (the dataset page should say "Written by Claude", not "offline fallback"). If earlier test purchases are on the timeline, run `make dev-reset` first; it deletes all local data. Then run `make dev-start`, `make seed` and `make wallets` (re-run `make wallets` after every reset, see [DEVELOPMENT.md](DEVELOPMENT.md#make-targets)).
-2. Install the [Sliver MCP](../packages/sliver-mcp/README.md) in Claude Desktop with `"SLIVER_API_URL": "http://127.0.0.1:8000"`, and run `sliver-mcp wallet init` so the buyer wallet is funded. Keep the default caps ($5 per purchase, $20 per day).
+1. On a fresh checkout, run `make install` first so `.env` is created from `.env.example` (don't create it by hand: `make` only copies the example when `.env` is missing). Set `SLIVER_SELLER_PASSWORD`, `SLIVER_REVIEWER_PASSWORD` and `ANTHROPIC_API_KEY` in `.env` (the dataset page should say "Written by Claude", not "offline fallback"). If earlier test purchases are on the timeline, run `make dev-reset` first; it deletes all local data. Then run `make dev-start`, `make seed` and `make wallets` (re-run `make wallets` after every reset, see [DEVELOPMENT.md](DEVELOPMENT.md#make-targets)).
+2. Install the [Sliver MCP](../packages/sliver-mcp/README.md) in Claude Desktop with `"SLIVER_API_URL": "http://127.0.0.1:8000"`, and run `sliver-mcp wallet init` so the buyer wallet is funded. If a wallet already exists, `wallet init` reuses it without funding it again: check the balance with `sliver-mcp wallet show` and make sure it covers the purchase after rehearsals. Keep the default caps ($5 per purchase, $20 per day).
 3. Prepare the seller CSV for scene 2. It must not duplicate a seeded dataset: the duplicates stage flags exact and near copies of published data and sends them to the reviewer. It should also be accepted automatically (quality score of at least 70, no blocking findings), because only an accepted dataset can be priced and published. Rehearse the upload once before the final `make dev-reset` to check this.
 4. Open browser tabs: http://127.0.0.1:5173/sell/login, http://127.0.0.1:5173/activity, and https://testnet.xrpl.org. After signing in, open http://127.0.0.1:5173/sell/insights in a fourth tab; it updates live, so leave it open through scene 6.
 5. **Never show `.env`, a wallet seed, `~/.sliver/wallet.json`, an API key or a password on screen.** Type the seller password off camera or blur it. `sliver_wallet` shows only the address and balance, so it is safe to show.
@@ -84,9 +84,9 @@ Expand the tool calls: `sliver_search`, then `sliver_evaluate`. The recommendati
 
 > Find weekly container spot rates from Singapore to Shanghai since September. Budget $5.
 
-Show `sliver_evaluate` recommending `buy` for the SGSIN-CNSHA sliver ($1.50), then `sliver_buy` with `budget_usd: 5`. Pause on the result: saved file path, SHA-256 verified, transaction hash and explorer link.
+Expand `sliver_evaluate` and check its arguments: a short `need` such as `weekly container spot rates Singapore to Shanghai`, with `time_start: "2026-09"` and `budget_usd: 5`. That gets `buy` for the SGSIN-CNSHA sliver ($1.50). If Claude passes the whole sentence as `need`, only 5 of its 11 terms appear in the listing (the evaluator needs 60%) and it answers `look_elsewhere`; rehearse, and if needed rephrase the prompt or name the arguments. Then `sliver_buy` with `budget_usd: 5`. Pause on the result: saved file path, SHA-256 verified, transaction hash and explorer link.
 
-**Narration:** "This one fits, and it costs a dollar fifty, inside the five-dollar budget. The MCP checks that the payment request matches the listing, then signs an XRPL payment locally. It pays the seller directly; Sliver never holds the money or the keys. The bytes it receives match the listed hash. Without a budget, or over it, the MCP refuses before signing anything."
+**Narration:** "This one fits, and it costs a dollar fifty, inside the five-dollar budget. The MCP checks that the payment request matches the listing, then signs an XRPL payment locally. It pays the seller directly; Sliver never holds the money or the buyer's keys. The bytes it receives match the listed hash. Without a budget, or over it, the MCP refuses before signing anything."
 
 ### 7. Live timeline and earnings (2:25–2:45)
 
@@ -115,6 +115,7 @@ Then switch to the `/sell/insights` tab: the $1.50 purchase is already under Ear
 
 ## Open questions for the team
 
+- **Scene 6 prompt:** settle the exact wording in rehearsal so Claude's `sliver_evaluate` call gets `buy` (see the scene).
 - **Seller CSV for scene 2:** which dataset? It must not duplicate a seeded one, it should be accepted automatically, and it should slice into a few slivers. Its category also shapes scene 4: with at least two published comparables in the same category (the seeded freight rates, for example), the base comes from the catalog and the range is narrower; otherwise a fixed category base is used.
 - **Explorer:** the timeline links to testnet.xrpl.org. Confirm that the `InvoiceID` field is easy to find on that page, or zoom in during editing.
 - **Agent note:** the API accepts an `X-Sliver-Agent-Note` header and shows it on the timeline, but the Sliver MCP doesn't send one yet, so no note appears in scene 7.
