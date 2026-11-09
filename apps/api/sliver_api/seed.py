@@ -111,6 +111,9 @@ def seed_dataset(db: Session, store: ObjectStore, folder: Path, spec: dict, owne
     dataset_key = f"datasets/seed/{stem}.csv"
 
     dataset = db.scalar(select(Dataset).where(Dataset.object_key == dataset_key))
+    if dataset is not None and dataset.sha256 != hashlib.sha256(raw).hexdigest():
+        # Datasets are immutable: new slices must never mix rows the stored dataset does not contain.
+        raise RuntimeError(f"{path.name} changed since it was seeded; run `make dev-reset` and seed again")
     if dataset is None:
         store_object(store, dataset_key, raw)
         dataset = Dataset(
