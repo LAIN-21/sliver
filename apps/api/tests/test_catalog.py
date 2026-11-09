@@ -187,3 +187,17 @@ def test_unexpected_coverage_keys_stay_private(seeded, client, sessions):
     coverage = client.get(f"/api/catalog/{resource_id}").json()["coverage"]
     assert set(coverage) == {"time", "slice"}
     assert set(coverage["time"]) == {"column", "start", "end"}
+
+
+def test_changed_seed_csv_requires_a_reset(sessions, store, tmp_path):
+    import shutil
+
+    folder = tmp_path / "catalog"
+    shutil.copytree(FIXTURES, folder)
+    seed(sessions, store, folder)
+    with open(folder / "rates.csv", "a", encoding="utf-8") as handle:
+        handle.write("2026-09-21,SGSIN-VNSGN,600\n")
+    with pytest.raises(RuntimeError, match="changed since it was seeded"):
+        seed(sessions, store, folder)
+    with sessions() as db:
+        assert db.scalar(select(func.count()).select_from(Resource)) == 6
