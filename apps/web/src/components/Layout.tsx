@@ -1,7 +1,9 @@
-import { NavLink, Outlet, useLocation } from "react-router";
+import { useEffect, useRef } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
 
 import { useSession } from "../session";
 import HealthBadge from "./HealthBadge";
+import { ExchangeIcon, SliverMark } from "./ExchangeIcons";
 
 const INSIGHTS = { to: "/sell/insights", label: "Insights", end: false };
 
@@ -13,29 +15,53 @@ const NAV = [
 
 export default function Layout() {
   const { account, logout } = useSession();
-  const { pathname } = useLocation();
-  const nav = account?.role === "seller" ? [...NAV.slice(0, 2), INSIGHTS, ...NAV.slice(2)] : NAV;
+  const { pathname, hash } = useLocation();
+  const previousPath = useRef(pathname);
+  const nav =
+    account?.role === "seller"
+      ? [...NAV.slice(0, 2), INSIGHTS, ...NAV.slice(2)]
+      : NAV;
   // "Sell data" covers /sell/*, except the insights page, which has its own entry.
   const onInsights = pathname.startsWith(INSIGHTS.to);
+  useEffect(() => {
+    if (!hash) {
+      // A query edit can clear an anchor. Only a page navigation resets the
+      // viewport; marketplace filters deliberately keep the results in view.
+      if (previousPath.current !== pathname)
+        window.scrollTo({ top: 0, behavior: "instant" });
+      previousPath.current = pathname;
+      return;
+    }
+    previousPath.current = pathname;
+    const frame = requestAnimationFrame(() =>
+      document.getElementById(hash.slice(1))?.scrollIntoView(),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [pathname, hash]);
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-4 sm:px-6">
-          <NavLink to="/" className="flex items-baseline gap-2" aria-label="Sliver home">
-            <span className="text-xl font-semibold tracking-tight">Sliver</span>
-            <span className="hidden text-sm text-muted sm:inline">data agents can buy by the slice</span>
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
+      <header className="app-header">
+        <div className="app-header-inner">
+          <NavLink to="/" className="brand-lockup" aria-label="Sliver home">
+            <SliverMark />
+            <span>
+              sliver<span className="brand-period">.</span>
+            </span>
           </NavLink>
-          <nav aria-label="Main" className="flex gap-1">
+          <nav aria-label="Main" className="app-nav">
             {nav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `rounded-md px-3 py-2 text-sm font-medium ${
+                  `nav-link ${
                     isActive && !(item.to === "/sell" && onInsights)
-                      ? "bg-brand-soft text-brand"
-                      : "text-muted hover:bg-surface hover:text-ink"
+                      ? "is-active"
+                      : ""
                   }`
                 }
               >
@@ -44,24 +70,54 @@ export default function Layout() {
             ))}
           </nav>
           {account ? (
-            <div className="ml-auto flex items-center gap-3 text-sm">
-              <span className="text-muted">
-                {account.display_name} <span className="text-xs">({account.role})</span>
+            <div className="account-nav">
+              <span>
+                {account.display_name}{" "}
+                <span className="text-xs">({account.role})</span>
               </span>
-              <button type="button" onClick={() => void logout()} className="font-medium text-brand hover:underline">
+              <button type="button" onClick={() => void logout()}>
                 Sign out
               </button>
             </div>
-          ) : null}
+          ) : (
+            <Link className="header-action" to="/sell/login">
+              Seller sign in <ExchangeIcon name="arrow" size={16} />
+            </Link>
+          )}
+          <span className="network-indicator">
+            <i />
+            XRPL TESTNET
+          </span>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={`app-main ${pathname === "/" ? "marketplace-main" : "workspace-main"}`}
+      >
         <Outlet />
       </main>
-      <footer className="border-t border-line bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 text-sm text-muted sm:px-6">
-          <span>Local demo on XRPL Testnet. No real funds.</span>
+      <footer className="app-footer">
+        <div className="app-footer-top">
+          <Link to="/" className="brand-lockup" aria-label="Sliver home">
+            <SliverMark />
+            <span>sliver.</span>
+          </Link>
+          <p>
+            Good answers start
+            <br />
+            with the right data.
+          </p>
+          <div>
+            <Link to="/">Marketplace</Link>
+            <Link to="/sell">Sell your data</Link>
+            <Link to="/activity">Activity</Link>
+          </div>
+        </div>
+        <div className="app-footer-bottom">
+          <span>XRPL Testnet demonstration. No real funds.</span>
           <HealthBadge />
+          <span>Data, by the slice.</span>
         </div>
       </footer>
     </div>

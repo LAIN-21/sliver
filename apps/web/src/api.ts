@@ -71,10 +71,10 @@ function isHealth(body: unknown): body is HealthStatus {
   );
 }
 
-export type CatalogFilters = { q?: string; category?: string; maxPriceMinor?: number; offset?: number };
+export type CatalogFilters = { q?: string; category?: string; maxPriceMinor?: number; offset?: number; limit?: number };
 
 export function searchCatalog(filters: CatalogFilters, signal?: AbortSignal): Promise<CatalogPage> {
-  const params = new URLSearchParams({ limit: "50" });
+  const params = new URLSearchParams({ limit: String(filters.limit ?? 50) });
   if (filters.q) params.set("q", filters.q);
   if (filters.category) params.set("category", filters.category);
   if (filters.maxPriceMinor) params.set("max_price_minor", String(filters.maxPriceMinor));

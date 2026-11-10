@@ -2,13 +2,19 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 
 import { ApiError, getCategories, searchCatalog } from "../api";
-import PageHeader, { EmptyState } from "../components/PageHeader";
+import { EmptyState } from "../components/PageHeader";
+import ExchangeHero from "../components/ExchangeHero";
+import ExchangeProtocol from "../components/ExchangeProtocol";
+import { ExchangeIcon } from "../components/ExchangeIcons";
 import RecentPurchases from "../components/RecentPurchases";
 import ResourceCard from "../components/ResourceCard";
 import { formatCategory } from "../format";
 import type { CatalogPage, CategoryCount } from "../types";
 
-type State = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; page: CatalogPage };
+type State =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; page: CatalogPage };
 
 export default function MarketplacePage() {
   const [params, setParams] = useSearchParams();
@@ -20,13 +26,16 @@ export default function MarketplacePage() {
   const [categories, setCategories] = useState<CategoryCount[]>([]);
   const [state, setState] = useState<State>({ kind: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => setDraft(q), [q]);
   useEffect(() => setMaxDraft(maxUsd), [maxUsd]);
 
   useEffect(() => {
     const controller = new AbortController();
-    getCategories(controller.signal).then(setCategories).catch(() => setCategories([]));
+    getCategories(controller.signal)
+      .then(setCategories)
+      .catch(() => setCategories([]));
     return () => controller.abort();
   }, []);
 
@@ -34,14 +43,21 @@ export default function MarketplacePage() {
     const controller = new AbortController();
     setState({ kind: "loading" });
     const maxPriceMinor = toPriceMinor(maxUsd);
-    searchCatalog({ q, category, maxPriceMinor: maxPriceMinor || undefined }, controller.signal)
+    searchCatalog(
+      { q, category, maxPriceMinor: maxPriceMinor || undefined, limit: 8 },
+      controller.signal,
+    )
       .then((page) => setState({ kind: "ready", page }))
       .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setState({ kind: "error", message: error instanceof ApiError ? error.message : "Search failed." });
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+        setState({
+          kind: "error",
+          message: error instanceof ApiError ? error.message : "Search failed.",
+        });
       });
     return () => controller.abort();
-  }, [q, category, maxUsd]);
+  }, [q, category, maxUsd, retry]);
 
   async function showMore() {
     if (state.kind !== "ready") return;
@@ -53,10 +69,17 @@ export default function MarketplacePage() {
         category,
         maxPriceMinor: toPriceMinor(maxUsd),
         offset: page.items.length,
+        limit: 8,
       });
-      setState({ kind: "ready", page: { ...next, items: [...page.items, ...next.items] } });
+      setState({
+        kind: "ready",
+        page: { ...next, items: [...page.items, ...next.items] },
+      });
     } catch (error) {
-      setState({ kind: "error", message: error instanceof ApiError ? error.message : "Search failed." });
+      setState({
+        kind: "error",
+        message: error instanceof ApiError ? error.message : "Search failed.",
+      });
     } finally {
       setLoadingMore(false);
     }
@@ -69,6 +92,9 @@ export default function MarketplacePage() {
       else merged.delete(key);
     }
     setParams(merged);
+    document
+      .getElementById("marketplace")
+      ?.scrollIntoView({ block: "start", behavior: "instant" });
   }
 
   function submit(event: FormEvent) {
@@ -80,90 +106,198 @@ export default function MarketplacePage() {
 
   return (
     <>
-      <PageHeader title="Marketplace">
-        Data that AI agents can buy by the slice. Listings show metadata only; the data itself is
-        delivered after an x402 payment on the XRP Ledger.
-      </PageHeader>
-
-      <RecentPurchases />
-
-      <form onSubmit={submit} className="mb-6 grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-[1fr_auto_auto_auto]">
-        <label className="sr-only" htmlFor="q">
-          Search
-        </label>
-        <input
-          id="q"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="What does your agent need? e.g. berth waiting times in October"
-          className="min-w-0 rounded-lg border border-line px-3 py-2 outline-none focus:border-brand"
-        />
-        <label className="sr-only" htmlFor="category">
-          Category
-        </label>
-        <select
-          id="category"
-          value={category}
-          onChange={(event) => update({ category: event.target.value })}
-          className="rounded-lg border border-line bg-white px-3 py-2"
-        >
-          <option value="">All categories</option>
-          {categories.map((item) => (
-            <option key={item.category} value={item.category}>
-              {formatCategory(item.category)} ({item.count})
-            </option>
-          ))}
-        </select>
-        <label className="sr-only" htmlFor="max">
-          Maximum price in USD
-        </label>
-        <input
-          id="max"
-          inputMode="decimal"
-          value={maxDraft}
-          onChange={(event) => setMaxDraft(event.target.value.replace(/[^\d.]/g, ""))}
-          placeholder="Max $"
-          className="w-full rounded-lg border border-line px-3 py-2 sm:w-28"
-        />
-        <button type="submit" className="rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand/90">
-          Search
-        </button>
-      </form>
-
-      {state.kind === "loading" ? <p className="text-muted">Loading listings…</p> : null}
-      {state.kind === "error" ? <p className="text-rose-600">{state.message}</p> : null}
-      {state.kind === "ready" && state.page.total === 0 ? (
-        <EmptyState title="No Resources match">
-          {q
-            ? "Nothing in the catalog covers this yet. Searches that find nothing are shared with sellers as demand."
-            : "Run `make seed` to load the demo catalog, or publish a dataset from the seller workspace."}
-        </EmptyState>
-      ) : null}
-      {state.kind === "ready" && state.page.total > 0 ? (
-        <>
-          <p className="mb-3 text-sm text-muted">
-            {state.page.total} {state.page.total === 1 ? "Resource" : "Resources"}
-            {q ? ` matching “${q}”` : ""}
+      <ExchangeHero />
+      <section
+        className="catalog-section"
+        id="marketplace"
+        aria-labelledby="marketplace-heading"
+      >
+        <div className="catalog-heading">
+          <div>
+            <p className="eyebrow">Discover your next source</p>
+            <h2 id="marketplace-heading">
+              The marketplace<span>.</span>
+            </h2>
+          </div>
+          <p>
+            Explore the metadata.
+            <br />
+            <strong>Pay only for what you need.</strong>
           </p>
-          <ul className="grid gap-4">
-            {state.page.items.map((resource) => (
-              <ResourceCard key={resource.id} resource={resource} />
-            ))}
-          </ul>
-          {state.page.items.length < state.page.total ? (
+        </div>
+        <RecentPurchases />
+        <form onSubmit={submit} className="catalog-search">
+          <div className="catalog-search-query">
+            <label htmlFor="q">Search</label>
+            <div>
+              <ExchangeIcon name="search" size={19} />
+              <input
+                id="q"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="What does your agent need?"
+              />
+            </div>
+          </div>
+          <div className="catalog-search-category">
+            <label htmlFor="category">Category</label>
+            <select
+              id="category"
+              value={category}
+              onChange={(event) => update({ category: event.target.value })}
+            >
+              <option value="">All categories</option>
+              {categories.map((item) => (
+                <option key={item.category} value={item.category}>
+                  {formatCategory(item.category)} ({item.count})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="catalog-search-price">
+            <label htmlFor="max">
+              Max price <span>(USD)</span>
+            </label>
+            <input
+              id="max"
+              inputMode="decimal"
+              value={maxDraft}
+              onChange={(event) =>
+                setMaxDraft(event.target.value.replace(/[^\d.]/g, ""))
+              }
+              placeholder="No limit"
+              aria-label="Maximum price in USD"
+            />
+          </div>
+          <button
+            type="submit"
+            className="button-primary catalog-search-button"
+          >
+            Search <ExchangeIcon name="arrow" size={18} />
+          </button>
+        </form>
+
+        <div className="catalog-workspace">
+          <aside className="catalog-rail" aria-label="Catalog categories">
+            <span className="eyebrow">Browse by category</span>
             <button
               type="button"
-              onClick={showMore}
-              disabled={loadingMore}
-              className="mt-4 w-full rounded-lg border border-line bg-white px-4 py-2 font-medium hover:bg-surface disabled:opacity-60"
+              onClick={() => update({ category: "" })}
+              aria-pressed={!category}
+              className={!category ? "is-selected" : ""}
             >
-              {loadingMore
-                ? "Loading…"
-                : `Show more (${state.page.total - state.page.items.length} remaining)`}
+              All datasets <ExchangeIcon name="arrow" size={16} />
             </button>
-          ) : null}
-        </>
-      ) : null}
+            {categories.map((item) => (
+              <button
+                type="button"
+                key={item.category}
+                onClick={() => update({ category: item.category })}
+                aria-pressed={category === item.category}
+                className={category === item.category ? "is-selected" : ""}
+              >
+                <span>{formatCategory(item.category)}</span>
+                <span className="category-count">{item.count}</span>
+              </button>
+            ))}
+            <div className="catalog-rail-note">
+              <ExchangeIcon name="layers" size={28} />
+              <h3>
+                A whole dataset.
+                <br />
+                Or just your part.
+              </h3>
+              <p>
+                Custom slices let your agent quote the rows that fit. Asking for
+                a quote never spends.
+              </p>
+              <a href="#connect-agent">
+                How it works <ExchangeIcon name="arrow" size={15} />
+              </a>
+            </div>
+          </aside>
+          <div className="catalog-results" aria-busy={state.kind === "loading"}>
+            <div className="results-toolbar">
+              <p aria-live="polite">
+                {state.kind === "ready" ? (
+                  <>
+                    <strong>{state.page.total}</strong>{" "}
+                    {state.page.total === 1 ? "Resource" : "Resources"}
+                    {q ? ` matching “${q}”` : " available"}
+                  </>
+                ) : state.kind === "loading" ? (
+                  "Loading listings…"
+                ) : (
+                  "Catalog unavailable"
+                )}
+              </p>
+              <span>
+                <i />
+                METADATA ONLY
+              </span>
+            </div>
+            {state.kind === "loading" ? (
+              <div className="catalog-grid skeleton-grid" aria-hidden="true">
+                {[0, 1, 2, 3].map((item) => (
+                  <div className="skeleton-sheet" key={item}>
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {state.kind === "error" ? (
+              <div className="catalog-error" role="alert">
+                <ExchangeIcon name="pulse" />
+                <h3>We couldn’t reach the catalog.</h3>
+                <p>{state.message}</p>
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={() => setRetry((value) => value + 1)}
+                >
+                  Try again <ExchangeIcon name="arrow" size={17} />
+                </button>
+              </div>
+            ) : null}
+            {state.kind === "ready" && state.page.total === 0 ? (
+              <EmptyState title="No Resources match">
+                {q
+                  ? "Nothing in the catalog covers this yet. Searches that find nothing are shared with sellers as demand."
+                  : "Run `make seed` to load the demo catalog, or publish a dataset from the seller workspace."}
+              </EmptyState>
+            ) : null}
+            {state.kind === "ready" && state.page.total > 0 ? (
+              <>
+                <ul className="catalog-grid" aria-label="Resources">
+                  {state.page.items.map((resource) => (
+                    <ResourceCard key={resource.id} resource={resource} />
+                  ))}
+                </ul>
+                {state.page.items.length < state.page.total ? (
+                  <button
+                    type="button"
+                    onClick={showMore}
+                    disabled={loadingMore}
+                    className="catalog-more"
+                  >
+                    {loadingMore
+                      ? "Loading…"
+                      : `Show more (${state.page.total - state.page.items.length} remaining)`}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        </div>
+        <p className="catalog-disclosure">
+          Listings show public metadata and seller-selected samples. Paid
+          dataset contents stay private until purchase.
+        </p>
+      </section>
+      <ExchangeProtocol />
     </>
   );
 }
