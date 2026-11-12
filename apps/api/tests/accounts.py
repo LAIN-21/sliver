@@ -23,3 +23,19 @@ def sign_in(client, email: str, password: str = PASSWORD):
     response = client.post("/api/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200, response.text
     return response
+
+
+def sign_in_agreed_seller(client, email: str):
+    sign_in(client, email)
+    current = client.get("/api/seller/agreement")
+    assert current.status_code == 200, current.text
+    agreement = current.json()
+    response = client.post(
+        "/api/seller/agreement",
+        json={
+            "version": agreement["version"],
+            "content_sha256": agreement["content_sha256"],
+            "accepted": True,
+        },
+    )
+    assert response.status_code == 200, response.text

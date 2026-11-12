@@ -1,7 +1,7 @@
 import hashlib
 
 import pytest
-from accounts import make_user, sign_in
+from accounts import make_user, sign_in, sign_in_agreed_seller
 from sqlalchemy import select
 
 from sliver_api.models import Dataset, PipelineStep
@@ -27,7 +27,7 @@ def upload(client, body: bytes = CSV, filename: str = "waits.csv", **overrides):
 def seller(make_client, sessions):
     make_user(sessions, "seller@example.test")
     client = make_client()
-    sign_in(client, "seller@example.test")
+    sign_in_agreed_seller(client, "seller@example.test")
     return client
 
 
@@ -64,6 +64,47 @@ def test_upload_requires_a_signed_in_seller(make_client, sessions):
     reviewer = make_client()
     sign_in(reviewer, "reviewer@example.test")
     assert upload(reviewer).status_code == 403
+
+
+def test_seller_must_explicitly_accept_the_exact_agreement_before_upload(make_client, sessions, store):
+    path = "/api/seller/agreement"
+    email = "seller@example.test"
+    make_user(sessions, email)
+    seller = make_client()
+    assert seller.get(path).status_code == 401
+    sign_in(seller, email)
+    current = seller.get(path).json()
+    assert current["accepted_at"] is None
+    assert upload(seller).status_code == 403
+    assert store.objects == {}
+
+    form = {"version": current["version"], "content_sha256": current["content_sha256"], "accepted": True}
+    assert seller.post(path, json={**form, "accepted": False}).status_code == 422
+    assert seller.post(path, json={**form, "content_sha256": "0" * 64}).status_code == 409
+    assert seller.post(path, json=form, headers={"Origin": "https://elsewhere.example"}).status_code == 403
+    assert seller.get(path).json()["accepted_at"] is None
+
+    response = seller.post(path, json=form)
+    assert response.status_code == 200, response.text
+    accepted_at = response.json()["accepted_at"]
+    assert accepted_at
+    assert seller.post(path, json=form).json()["accepted_at"] == accepted_at
+    new_session = make_client()
+    sign_in(new_session, email)
+    assert new_session.get(path).json()["accepted_at"] == accepted_at
+    assert upload(new_session).status_code == 201
+
+    make_user(sessions, "other@example.test")
+    other = make_client()
+    sign_in(other, "other@example.test")
+    assert other.get(path).json()["accepted_at"] is None
+    assert upload(other).status_code == 403
+
+    make_user(sessions, "reviewer@example.test", role="reviewer")
+    reviewer = make_client()
+    sign_in(reviewer, "reviewer@example.test")
+    assert reviewer.post(path, json=form).status_code == 403
+    assert reviewer.get("/api/seller/datasets").status_code == 200
 
 
 def test_oversized_uploads_are_refused_before_parsing(seller, sessions, store):
@@ -109,7 +150,7 @@ def test_sellers_cannot_read_each_others_datasets(seller, make_client, sessions)
     mine = upload(seller).json()["id"]
     make_user(sessions, "other@example.test")
     other = make_client()
-    sign_in(other, "other@example.test")
+    sign_in_agreed_seller(other, "other@example.test")
     theirs = upload(other, title="Other seller data").json()["id"]
 
     assert [item["id"] for item in seller.get("/api/seller/datasets").json()["items"]] == [mine]

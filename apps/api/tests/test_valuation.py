@@ -10,7 +10,7 @@ from dataclasses import replace
 
 import pytest
 import test_payments as harness
-from accounts import make_user, sign_in
+from accounts import make_user, sign_in, sign_in_agreed_seller
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from test_ai_review import CLEAN, RATES, run
@@ -18,8 +18,8 @@ from test_seller import upload
 
 from sliver_api import ai, valuation
 from sliver_api.main import create_app
-from sliver_api.models import Resource, User
-from sliver_api.seller import pricing
+from sliver_api.models import Resource, SellerAgreementAcceptance, User
+from sliver_api.seller import agreements, pricing
 from sliver_api.valuation import Comparable, DemandMatch, ValuationInputs
 
 BASE = ValuationInputs(
@@ -163,7 +163,7 @@ def test_max_overlap_reads_duplicate_comparisons_and_findings():
 def seller(make_client, sessions):
     make_user(sessions, "seller@example.test")
     client = make_client()
-    sign_in(client, "seller@example.test")
+    sign_in_agreed_seller(client, "seller@example.test")
     return client
 
 
@@ -190,6 +190,26 @@ def report(client, dataset_id):
 
 def publish(client, dataset_id, **body):
     return client.post(f"/api/seller/datasets/{dataset_id}/publish", json=body)
+
+
+def test_seller_must_accept_the_new_agreement_before_publishing(seller, sessions, store, monkeypatch):
+    dataset_id = accepted(seller, sessions, store)
+    path = "/api/seller/agreement"
+    old = seller.get(path).json()
+    changed = {**agreements.CURRENT_DOCUMENT, "version": "demo-v2", "content_sha256": "1" * 64}
+    monkeypatch.setattr(agreements, "CURRENT_DOCUMENT", changed)
+    assert seller.get(path).json()["accepted_at"] is None
+    assert publish(seller, dataset_id).status_code == 403
+    assert seller.get(f"/api/seller/datasets/{dataset_id}").json()["status"] == "accepted"
+
+    old_form = {"version": old["version"], "content_sha256": old["content_sha256"], "accepted": True}
+    assert seller.post(path, json=old_form).status_code == 409
+    new_form = {**old_form, "version": changed["version"], "content_sha256": changed["content_sha256"]}
+    assert seller.post(path, json=new_form).status_code == 200
+    assert publish(seller, dataset_id).status_code == 200
+    with sessions() as db:
+        records = db.scalars(select(SellerAgreementAcceptance)).all()
+        assert {record.version for record in records} == {old["version"], changed["version"]}
 
 
 def full_price(body) -> int:
@@ -240,7 +260,7 @@ def test_overlap_with_a_published_dataset_lowers_the_suggestion(make_client, sel
     assert publish(seller, original).status_code == 200
     make_user(sessions, "other@example.test")
     other = make_client()
-    sign_in(other, "other@example.test")
+    sign_in_agreed_seller(other, "other@example.test")
     unique = accepted(
         other, sessions, store, body=CLEAN.replace("2026-", "2025-").replace(",11", ",21"), title="Rates"
     )
@@ -313,7 +333,7 @@ def test_only_the_owner_prices_and_publishes_accepted_datasets(
     dataset_id = accepted(seller, sessions, store)
     make_user(sessions, "other@example.test")
     other = make_client()
-    sign_in(other, "other@example.test")
+    sign_in_agreed_seller(other, "other@example.test")
     for client, status in ((other, 404), (reviewer, 403), (make_client(), 401)):
         assert client.get(f"/api/seller/datasets/{dataset_id}/valuation").status_code == status
         assert publish(client, dataset_id).status_code == status

@@ -434,6 +434,22 @@ class Demo:
             "Seller sign-in (check SLIVER_SELLER_PASSWORD, then `make seed`)",
         )
         self.seller_name = ((account or {}).get("user") or {}).get("display_name") or DEMO_SELLER
+        agreement = checked(self.seller.get("/api/seller/agreement"), "Load Seller Agreement")
+        if not agreement.get("accepted_at"):
+            if agreement.get("version") != "demo-v1":
+                raise DemoError("Sign in and accept the current Seller Agreement before running make demo.")
+            checked(
+                self.seller.post(
+                    "/api/seller/agreement",
+                    json={
+                        "version": agreement["version"],
+                        "content_sha256": agreement["content_sha256"],
+                        "accepted": True,
+                    },
+                ),
+                "Accept the draft Seller Agreement for the synthetic demo",
+            )
+            say("  scripted seller accepted the draft Seller Agreement")
         generator = load_generator(Path(self.args.generator))
         data = generator.generate(self.run_id, self.today)
         title = f"Singapore anchorage waiting times, daily (demo run {self.run_id})"

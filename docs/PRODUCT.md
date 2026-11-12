@@ -17,6 +17,8 @@ Sliver is not the buying agent. External agents decide whether purchasing data i
 
 The initial seller focus is structured uploaded datasets.
 
+Sellers accept the current Seller Agreement before entering the seller workspace, uploading or publishing. The agreement covers accurate descriptions, rights to sell and reporting material errors. Sellers also confirm distribution rights for each dataset they upload.
+
 Enterprise and API integrations are a later input mechanism into the same Resource marketplace.
 
 Buyers pay for the slice their question needs. Besides the slivers a seller publishes, a buyer's agent may ask for a custom slice of a published dataset (a time range and/or one value of a category column): Sliver cuts exactly those rows, prices them per row from the seller's published full-dataset price, never above it, and sells them like any sliver: the buyer pays through Sliver, and the seller is credited (net of Sliver's fee) and paid out on the 15-day schedule. Sellers choose at publication whether to offer custom slices (on by default). Asking for a quote never spends; the buyer's agent still decides whether to buy.
