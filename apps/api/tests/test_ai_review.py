@@ -12,7 +12,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-from accounts import make_user, sign_in
+from accounts import make_user, sign_in, sign_in_agreed_seller
 from sqlalchemy import select
 from test_pipeline import examples_folder
 from test_seller import upload
@@ -49,7 +49,7 @@ CLEAN = "week_start,lane,usd_price\n" + "".join(
 def seller(make_client, sessions):
     make_user(sessions, "seller@example.test")
     client = make_client()
-    sign_in(client, "seller@example.test")
+    sign_in_agreed_seller(client, "seller@example.test")
     return client
 
 
@@ -153,7 +153,7 @@ def test_the_fallback_is_deterministic(make_client, sessions, store):
     for email in ("one@example.test", "two@example.test"):
         make_user(sessions, email)
         client = make_client()
-        sign_in(client, email)
+        sign_in_agreed_seller(client, email)
         dataset_id = upload(client, body=CLEAN.encode(), title="Spot rates").json()["id"]
         run(sessions, store)
         body = detail(client, dataset_id)
@@ -377,7 +377,7 @@ def test_results_are_cached_by_dataset_sha256(make_client, sessions, store, fake
     for email in ("one@example.test", "two@example.test"):
         make_user(sessions, email)
         client = make_client()
-        sign_in(client, email)
+        sign_in_agreed_seller(client, email)
         dataset_id = upload(client, body=CLEAN.encode(), title="Spot rates").json()["id"]
         run(sessions, store)
     assert len(engine.calls) == 1
@@ -420,7 +420,7 @@ def test_rejected_answers_are_never_cached(make_client, sessions, store, fake):
             engine.outputs[ai.REVIEW_PROMPT] = output
         make_user(sessions, email)
         client = make_client()
-        sign_in(client, email)
+        sign_in_agreed_seller(client, email)
         dataset_id = upload(client, body=CLEAN.encode(), title="Spot rates").json()["id"]
         run(sessions, store)
         if output is None:

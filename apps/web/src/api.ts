@@ -86,6 +86,35 @@ export async function getCategories(signal?: AbortSignal): Promise<CategoryCount
   return (await request<{ items: CategoryCount[] }>("/catalog/categories", { signal })).items;
 }
 
+export type SellerAgreement = {
+  title: string;
+  notice: string;
+  sections: { title: string; text: string }[];
+  version: string;
+  content_sha256: string;
+  accepted_at: string | null;
+};
+
+export function getSellerAgreement(signal: AbortSignal): Promise<SellerAgreement> {
+  return request<SellerAgreement>("/seller/agreement", { signal });
+}
+
+export function acceptSellerAgreement(
+  agreement: SellerAgreement,
+  signal: AbortSignal,
+): Promise<SellerAgreement> {
+  return request<SellerAgreement>("/seller/agreement", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      version: agreement.version,
+      content_sha256: agreement.content_sha256,
+      accepted: true,
+    }),
+    signal,
+  });
+}
+
 export function getResource(id: string, signal?: AbortSignal): Promise<PublicResource> {
   return request<PublicResource>(`/catalog/${encodeURIComponent(id)}`, { signal });
 }

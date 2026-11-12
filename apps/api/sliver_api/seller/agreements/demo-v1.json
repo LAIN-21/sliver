@@ -1,0 +1,18 @@
+{
+  "title": "Seller Agreement",
+  "notice": "Demo draft for testing with synthetic data. Production terms are pending legal review.",
+  "sections": [
+    {
+      "title": "Describe the data accurately",
+      "text": "Provide an accurate description of the dataset, its source, collection method, coverage and known limitations. Do not pass fabricated data off as observed data. Clearly label synthetic, estimated or materially altered data."
+    },
+    {
+      "title": "Confirm your right to sell",
+      "text": "Only upload and sell datasets you have the rights and permissions to distribute. Confirm those rights for each upload. Do not include personal or confidential information you are not authorized to share."
+    },
+    {
+      "title": "Report material errors",
+      "text": "Promptly notify Sliver if you discover a material error, a misleading description or a change to your right to sell a listed dataset. Cooperate with Sliver if it investigates a report about your data."
+    }
+  ]
+}

@@ -47,6 +47,15 @@ class User(Base):
     __table_args__ = (CheckConstraint("role IN ('seller', 'reviewer')", name="users_role"),)
 
 
+class SellerAgreementAcceptance(Base):
+    __tablename__ = "seller_agreement_acceptances"
+
+    seller_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    version: Mapped[str] = mapped_column(String(32), primary_key=True)
+    content_sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class Dataset(Base):
     """A private, immutable upload. Never serialized publicly."""
 

@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import pytest
 import test_payments as harness
-from accounts import make_user, sign_in
+from accounts import make_user, sign_in, sign_in_agreed_seller
 from conftest import PLATFORM_ADDRESS
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -575,7 +575,7 @@ def test_the_seller_chooses_at_publication_whether_custom_slices_are_offered(
 
     make_user(sessions, "pricing@example.test")
     seller = make_client()
-    sign_in(seller, "pricing@example.test")
+    sign_in_agreed_seller(seller, "pricing@example.test")
     dataset_id = flow.accepted(seller, sessions, store)
     before = flow.report(seller, dataset_id)
     assert before["custom_slices"] == {"allowed": True, "count": 0}  # on by default

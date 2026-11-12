@@ -4,7 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from accounts import make_user, sign_in
+from accounts import make_user, sign_in_agreed_seller
 from sqlalchemy import select, update
 from test_catalog import FIXTURES
 from test_seller import upload
@@ -154,7 +154,7 @@ def test_sensitive_column_names(name, severity):
 def seller(make_client, sessions):
     make_user(sessions, "seller@example.test")
     client = make_client()
-    sign_in(client, "seller@example.test")
+    sign_in_agreed_seller(client, "seller@example.test")
     return client
 
 
@@ -354,7 +354,7 @@ def test_unrelated_data_and_private_uploads_of_others_are_not_duplicates(
 ):
     make_user(sessions, "other@example.test")
     other = make_client()
-    sign_in(other, "other@example.test")
+    sign_in_agreed_seller(other, "other@example.test")
     body = b"sensor,reading\nA,1\nB,2\nC,3\n"
     upload(other, body=body + b"D,4\n", title="Other private")
     process_available(sessions, store, TIMEOUT)
@@ -367,7 +367,7 @@ def test_unrelated_data_and_private_uploads_of_others_are_not_duplicates(
 def test_exact_copies_of_other_sellers_private_uploads_are_not_reported(seller, make_client, sessions, store):
     make_user(sessions, "other@example.test")
     other = make_client()
-    sign_in(other, "other@example.test")
+    sign_in_agreed_seller(other, "other@example.test")
     body = b"sensor,reading\nA,1\nB,2\n"
     upload(other, body=body, title="Other private")
     process_available(sessions, store, TIMEOUT)

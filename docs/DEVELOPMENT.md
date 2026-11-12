@@ -78,6 +78,8 @@ Each client IP gets a per-minute budget for `POST /api/auth/login` (`SLIVER_RATE
 
 Set `SLIVER_SELLER_PASSWORD` and `SLIVER_REVIEWER_PASSWORD` in `.env` (empty values disable sign-in), restart the stack with `make dev-start` so the containers pick them up, then run `make seed`. Sign in at http://127.0.0.1:5173/sell/login as a demo seller (`harbour-analytics@sliver.local` or `strait-line-data@sliver.local`) or as `reviewer@sliver.local`. Re-run `make seed` after changing a password.
 
+On first entry to the seller workspace, sellers read and accept the current Seller Agreement. Sliver records the account, document version, content hash and server timestamp. Keep released agreement files in `apps/api/sliver_api/seller/agreements/` and add a new file and version for changes. `make demo` explicitly accepts the draft `demo-v1` for its synthetic upload. The production agreement text is pending legal review.
+
 Sellers upload a UTF-8 CSV (at most 5 MiB, 10,000 rows, 100 columns) with a title, provenance (source, method, collection date) and a rights confirmation. The worker then runs validate, profile, privacy, duplicates, AI review, research, package and decide; the dataset page polls and shows each stage's status and findings, the proposed public listing, the packaged slivers and the acceptance decision. Datasets without blocking findings and with a quality score of at least `SLIVER_AUTO_ACCEPT_QUALITY` (70) are accepted automatically and wait for their seller to price and publish them; the rest wait in the reviewer queue at `/sell`, where the reviewer approves or rejects each one with a reason. Sellers see only their own uploads; the reviewer sees only datasets that reached review (waiting, accepted or decided).
 
 ### AI review

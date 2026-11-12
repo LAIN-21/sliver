@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Request
+from fastapi import APIRouter, HTTPException, Path, Request, Response
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from ..deps import DB
 from ..models import Dataset, PipelineStep, Resource, User, utcnow
 from ..pipeline.table import MAX_FILE_BYTES
 from . import pricing
+from .agreements import AgreedSeller, AgreementDecision, accept_agreement, agreement_status
 from .insights import insights
 from .uploads import (
     NotReviewable,
@@ -44,8 +45,19 @@ def steps_by_dataset(db, dataset_ids: list[str]) -> dict[str, list[PipelineStep]
     return grouped
 
 
+@router.get("/agreement")
+def get_agreement(response: Response, db: DB, seller: CurrentSeller) -> dict:
+    response.headers["Cache-Control"] = "private, no-store"
+    return agreement_status(db, seller)
+
+
+@router.post("/agreement")
+def record_agreement(form: AgreementDecision, db: DB, seller: CurrentSeller) -> dict:
+    return accept_agreement(db, seller, form)
+
+
 @router.post("/datasets", status_code=201)
-async def upload_dataset(request: Request, db: DB, seller: CurrentSeller) -> dict:
+async def upload_dataset(request: Request, db: DB, seller: AgreedSeller) -> dict:
     """Multipart upload: `file` (UTF-8 CSV, at most 5 MiB), `title`, `source`, `method`,
     `collected_at` (ISO date), `rights_confirmed` and an optional `rights_statement`.
 
@@ -160,7 +172,7 @@ def publish_dataset(
     form: pricing.PublishForm,
     request: Request,
     db: DB,
-    seller: CurrentSeller,
+    seller: AgreedSeller,
 ) -> dict:
     """Publish every draft sliver at its suggested price or the seller's override.
 
